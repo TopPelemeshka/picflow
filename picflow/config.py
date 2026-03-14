@@ -24,7 +24,8 @@ class DuplicateThresholds:
 
 @dataclass(slots=True)
 class VerificationSettings:
-    base_url: str = "http://127.0.0.1:12334/v1beta"
+    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    proxy_url: str | None = "http://127.0.0.1:12334"
     model: str = "gemma-3-27b-it"
     api_keys: list[str] = field(default_factory=list)
     request_timeout_sec: int = 60
@@ -50,6 +51,15 @@ class AppConfig:
     duplicate_action: str = "delete"
     supported_extensions: list[str] = field(
         default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"]
+    )
+    export_categories: list[str] = field(
+        default_factory=lambda: [
+            "ero-anime",
+            "ero-real",
+            "standart-art",
+            "standart-meme",
+            "single-meme",
+        ]
     )
     duplicate_thresholds: DuplicateThresholds = field(default_factory=DuplicateThresholds)
     verification: VerificationSettings = field(default_factory=VerificationSettings)
@@ -130,7 +140,13 @@ class AppConfig:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "AppConfig":
         thresholds = DuplicateThresholds(**payload.get("duplicate_thresholds", {}))
-        verification = VerificationSettings(**payload.get("verification", {}))
+        verification_payload = dict(payload.get("verification", {}))
+        base_url = verification_payload.get("base_url")
+        proxy_url = verification_payload.get("proxy_url")
+        if isinstance(base_url, str) and base_url.startswith(("http://127.0.0.1", "http://localhost")) and not proxy_url:
+            verification_payload["proxy_url"] = base_url
+            verification_payload["base_url"] = "https://generativelanguage.googleapis.com/v1beta"
+        verification = VerificationSettings(**verification_payload)
         return cls(
             project_root=Path(payload.get("project_root", PROJECT_ROOT)),
             library_root=Path(payload.get("library_root", r"D:\tg-bot_photo")),
@@ -148,6 +164,12 @@ class AppConfig:
                 payload.get(
                     "supported_extensions",
                     [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"],
+                )
+            ),
+            export_categories=list(
+                payload.get(
+                    "export_categories",
+                    ["ero-anime", "ero-real", "standart-art", "standart-meme", "single-meme"],
                 )
             ),
             duplicate_thresholds=thresholds,

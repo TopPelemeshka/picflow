@@ -10,7 +10,7 @@ from typing import Callable
 
 import requests
 
-from .config import AppConfig
+from .config import AppConfig, DEFAULT_CONFIG_PATH
 from .db import Database
 from .hashing import encode_image_for_api
 
@@ -56,7 +56,7 @@ class GeminiVerifier:
         base = self.config.verification.base_url.rstrip("/")
         return f"{base}/models/{self.config.verification.model}:generateContent?key={api_key}"
 
-    def _payload(self, left_path: str, right_path: str) -> dict:
+    def _payload(self, left_path: str, right_path: str, *, json_mode: bool = True) -> dict:
         left_b64, left_mime = encode_image_for_api(
             Path(left_path),
             max_side=self.config.verification.max_image_side,
@@ -67,6 +67,11 @@ class GeminiVerifier:
             max_side=self.config.verification.max_image_side,
             jpeg_quality=self.config.verification.jpeg_quality,
         )
+        generation_config = {
+            "temperature": 0,
+        }
+        if json_mode:
+            generation_config["responseMimeType"] = "application/json"
         return {
             "contents": [
                 {
@@ -77,21 +82,27 @@ class GeminiVerifier:
                     ]
                 }
             ],
-            "generationConfig": {
-                "temperature": 0,
-                "responseMimeType": "application/json",
-            },
+            "generationConfig": generation_config,
         }
 
     def verify_pair(self, left_path: str, right_path: str, api_key: str) -> VerificationResult:
         endpoint = self._endpoint_for_key(api_key)
-        payload = self._payload(left_path, right_path)
-        response = requests.post(
-            endpoint,
-            json=payload,
-            timeout=self.config.verification.request_timeout_sec,
-            proxies={"http": None, "https": None},
-        )
+        payload = self._payload(left_path, right_path, json_mode=True)
+        proxies = None
+        if self.config.verification.proxy_url:
+            proxies = {
+                "http": self.config.verification.proxy_url,
+                "https": self.config.verification.proxy_url,
+            }
+        response = requests.post(endpoint, json=payload, timeout=self.config.verification.request_timeout_sec, proxies=proxies)
+        if response.status_code == 400 and "JSON mode is not enabled" in response.text:
+            payload = self._payload(left_path, right_path, json_mode=False)
+            response = requests.post(
+                endpoint,
+                json=payload,
+                timeout=self.config.verification.request_timeout_sec,
+                proxies=proxies,
+            )
         response.raise_for_status()
         data = response.json()
         if data.get("promptFeedback", {}).get("blockReason"):
@@ -128,18 +139,34 @@ class GeminiVerifier:
         return VerificationResult(label, confidence_value, reason, raw_response)
 
 
+def resolve_api_keys(config: AppConfig) -> list[str]:
+    api_keys = [key for key in config.verification.api_keys if key]
+    if api_keys:
+        return api_keys
+    if DEFAULT_CONFIG_PATH.exists():
+        try:
+            payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return []
+        fallback = [key for key in payload.get("verification", {}).get("api_keys", []) if key]
+        if fallback:
+            return fallback
+    return []
+
+
 def run_verification(
     db: Database,
     config: AppConfig,
     *,
     limit: int | None = None,
+    force: bool = False,
     progress: ProgressCallback | None = None,
 ) -> dict[str, int]:
-    api_keys = [key for key in config.verification.api_keys if key]
+    api_keys = resolve_api_keys(config)
     if not api_keys:
         raise RuntimeError("В конфиге нет verification.api_keys")
     verifier = GeminiVerifier(config)
-    items = db.list_candidates_for_verification(limit=limit)
+    items = db.list_candidates_for_verification(limit=limit, force=force)
     total = len(items)
     if total == 0:
         return {"queued": 0, "verified": 0, "duplicates": 0, "distinct": 0, "blocked": 0, "errors": 0}

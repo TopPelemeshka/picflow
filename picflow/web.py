@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .categorization import apply_export_actions, list_category_items, plan_export_actions, run_categorization
 from .config import AppConfig, load_or_create_config, resolve_config_path
 from .db import Database
 from .duplicates import apply_planned_actions, build_duplicate_candidates, plan_duplicate_actions, scan_library, utc_now
@@ -80,6 +81,9 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         if parsed.path == "/selection":
             self._serve_file(Path(__file__).resolve().parent / "templates" / "selection.html", "text/html; charset=utf-8")
             return
+        if parsed.path == "/categorize":
+            self._serve_file(Path(__file__).resolve().parent / "templates" / "categorize.html", "text/html; charset=utf-8")
+            return
         if parsed.path.startswith("/static/"):
             target = Path(__file__).resolve().parent / parsed.path.lstrip("/")
             if target.exists():
@@ -110,6 +114,22 @@ class PicFlowHandler(BaseHTTPRequestHandler):
             offset = int(query.get("offset", ["0"])[0])
             items = list_selection_items(self.app.db, self.app.config, filter_mode, limit, offset)
             self._send_json({"items": items, "filter": filter_mode, "offset": offset, "limit": limit})
+            return
+        if parsed.path == "/api/categories":
+            query = parse_qs(parsed.query)
+            filter_mode = query.get("filter", ["all"])[0]
+            limit = int(query.get("limit", ["120"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            items = list_category_items(self.app.db, self.app.config, filter_mode, limit, offset)
+            self._send_json(
+                {
+                    "items": items,
+                    "filter": filter_mode,
+                    "offset": offset,
+                    "limit": limit,
+                    "categories": self.app.config.export_categories,
+                }
+            )
             return
         if parsed.path.startswith("/api/duplicates/"):
             try:
@@ -159,11 +179,23 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/selection/apply":
             self._apply_selection_job(body)
             return
+        if parsed.path == "/api/categories/run-ai":
+            self._run_category_ai(body)
+            return
+        if parsed.path == "/api/categories/export-plan":
+            self._category_export_plan()
+            return
+        if parsed.path == "/api/categories/export":
+            self._apply_export_job()
+            return
         if parsed.path.startswith("/api/duplicates/") and parsed.path.endswith("/label"):
             self._label_candidate(parsed.path, body)
             return
         if parsed.path.startswith("/api/selection/") and parsed.path.endswith("/label"):
             self._label_selection(parsed.path, body)
+            return
+        if parsed.path.startswith("/api/categories/") and parsed.path.endswith("/label"):
+            self._label_category(parsed.path, body)
             return
         self._send_error_json(HTTPStatus.NOT_FOUND, "Не найдено")
 
@@ -197,13 +229,15 @@ class PicFlowHandler(BaseHTTPRequestHandler):
 
     def _start_verify_job(self, body: dict) -> None:
         limit = body.get("limit")
+        force = bool(body.get("force"))
         job_id = self.app.jobs.start_job(
             "verify",
-            {"limit": limit},
+            {"limit": limit, "force": force},
             lambda progress: run_verification(
                 self.app.db,
                 self.app.config,
                 limit=limit,
+                force=force,
                 progress=progress,
             ),
         )
@@ -284,6 +318,60 @@ class PicFlowHandler(BaseHTTPRequestHandler):
                 through_image_id,
                 progress=progress,
             ),
+        )
+        self._send_json({"job_id": job_id})
+
+    def _label_category(self, path: str, body: dict) -> None:
+        parts = path.strip("/").split("/")
+        try:
+            image_id = int(parts[2])
+        except (IndexError, ValueError):
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный id")
+            return
+        label = body.get("label")
+        if label == "clear":
+            label = None
+        if label not in {None, "blocked", *self.app.config.export_categories}:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректная категория")
+            return
+        source = None if label is None else "manual"
+        self.app.db.update_category_label(image_id, label, source, utc_now())
+        self._send_json({"ok": True, "id": image_id, "label": label})
+
+    def _run_category_ai(self, body: dict) -> None:
+        limit = body.get("limit")
+        force = bool(body.get("force"))
+        job_id = self.app.jobs.start_job(
+            "categorize_ai",
+            {"limit": limit, "force": force},
+            lambda progress: run_categorization(
+                self.app.db,
+                self.app.config,
+                limit=limit,
+                force=force,
+                progress=progress,
+            ),
+        )
+        self._send_json({"job_id": job_id})
+
+    def _category_export_plan(self) -> None:
+        actions = plan_export_actions(self.app.db, self.app.config)
+        preview = [
+            {
+                "kind": action.kind,
+                "old_path": action.old_path,
+                "new_path": action.new_path,
+                "note": action.note,
+            }
+            for action in actions[:100]
+        ]
+        self._send_json({"total": len(actions), "preview": preview})
+
+    def _apply_export_job(self) -> None:
+        job_id = self.app.jobs.start_job(
+            "export_apply",
+            {},
+            lambda progress: apply_export_actions(self.app.db, self.app.config, progress=progress),
         )
         self._send_json({"job_id": job_id})
 

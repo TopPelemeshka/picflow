@@ -10,6 +10,8 @@
 - локальный веб-интерфейс для ручного ревью пар и подтверждения удаления дублей;
 - планирование удаления дублей с приоритетом сохранения файлов из `all_photos`;
 - выявление конфликтов имен файлов среди неэталонных изображений.
+- good/bad отбор входящих фото с разбором просмотренного префикса по папкам;
+- ручная и AI-категоризация `approved_unsorted` с экспортом в `export/*`.
 
 Что будет следующим этапом:
 
@@ -42,8 +44,11 @@ python -m picflow --config picflow.test.settings.json runserver
 python -m picflow scan
 python -m picflow candidates
 python -m picflow verify --limit 200
+python -m picflow verify --limit 25 --force
 python -m picflow plan
 python -m picflow --config picflow.test.settings.json scan
+python -m picflow categorize-ai --limit 100
+python -m picflow export-plan
 ```
 
 ## Важные замечания

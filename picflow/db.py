@@ -31,6 +31,9 @@ SELECT
   thumbnail_path,
   selection_label,
   selection_updated_at,
+  category_label,
+  category_source,
+  category_updated_at,
   last_scanned_at,
   is_deleted
 FROM images
@@ -80,6 +83,9 @@ class Database:
                   thumbnail_path TEXT,
                   selection_label TEXT,
                   selection_updated_at TEXT,
+                  category_label TEXT,
+                  category_source TEXT,
+                  category_updated_at TEXT,
                   last_scanned_at TEXT NOT NULL,
                   is_deleted INTEGER NOT NULL DEFAULT 0
                 );
@@ -140,6 +146,9 @@ class Database:
             )
             self._ensure_column(conn, "images", "selection_label", "TEXT")
             self._ensure_column(conn, "images", "selection_updated_at", "TEXT")
+            self._ensure_column(conn, "images", "category_label", "TEXT")
+            self._ensure_column(conn, "images", "category_source", "TEXT")
+            self._ensure_column(conn, "images", "category_updated_at", "TEXT")
 
     def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
         current = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -494,7 +503,126 @@ class Database:
         counts["total"] = sum(counts.values())
         return counts
 
-    def list_candidates_for_verification(self, limit: int | None = None) -> list[dict[str, Any]]:
+    def list_category_images(
+        self,
+        filter_mode: str = "all",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        where = "WHERE is_deleted = 0 AND role = 'approved'"
+        if filter_mode == "pending":
+            where += " AND COALESCE(category_label, 'pending') = 'pending'"
+        elif filter_mode == "blocked":
+            where += " AND category_label = 'blocked'"
+        elif filter_mode != "all":
+            where += " AND category_label = ?"
+            params = (filter_mode, limit, offset)
+            query = f"""
+            SELECT
+              id,
+              path,
+              root_name,
+              role,
+              file_name,
+              width,
+              height,
+              size_bytes,
+              thumbnail_path,
+              category_label,
+              category_source,
+              category_updated_at
+            FROM images
+            {where}
+            ORDER BY path ASC
+            LIMIT ? OFFSET ?
+            """
+            with self.connect() as conn:
+                rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+        query = f"""
+        SELECT
+          id,
+          path,
+          root_name,
+          role,
+          file_name,
+          width,
+          height,
+          size_bytes,
+          thumbnail_path,
+          category_label,
+          category_source,
+          category_updated_at
+        FROM images
+        {where}
+        ORDER BY path ASC
+        LIMIT ? OFFSET ?
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, (limit, offset)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_category_queue(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                  id,
+                  path,
+                  root_name,
+                  role,
+                  file_name,
+                  width,
+                  height,
+                  size_bytes,
+                  thumbnail_path,
+                  category_label,
+                  category_source,
+                  category_updated_at
+                FROM images
+                WHERE is_deleted = 0 AND role = 'approved'
+                ORDER BY path ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_category_label(
+        self,
+        image_id: int,
+        label: str | None,
+        source: str | None,
+        updated_at: str,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE images
+                SET category_label = ?, category_source = ?, category_updated_at = ?
+                WHERE id = ?
+                """,
+                (label, source, updated_at, image_id),
+            )
+
+    def category_counts(self) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT COALESCE(category_label, 'pending') AS label, COUNT(*) AS total
+                FROM images
+                WHERE is_deleted = 0 AND role = 'approved'
+                GROUP BY COALESCE(category_label, 'pending')
+                """
+            ).fetchall()
+        counts = {row["label"]: row["total"] for row in rows}
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def list_candidates_for_verification(
+        self,
+        limit: int | None = None,
+        *,
+        force: bool = False,
+    ) -> list[dict[str, Any]]:
         query = """
         SELECT
           dc.id,
@@ -511,9 +639,18 @@ class Database:
         WHERE li.is_deleted = 0
           AND ri.is_deleted = 0
           AND dc.manual_label IS NULL
-          AND (dc.ai_label IS NULL OR dc.ai_label IN ('blocked', 'error'))
         ORDER BY dc.candidate_score DESC, dc.id ASC
         """
+        if force:
+            query = query.replace(
+                "AND dc.manual_label IS NULL\n",
+                "AND dc.manual_label IS NULL\n",
+            )
+        else:
+            query = query.replace(
+                "ORDER BY dc.candidate_score DESC, dc.id ASC",
+                "AND (dc.ai_label IS NULL OR dc.ai_label IN ('blocked', 'error'))\n        ORDER BY dc.candidate_score DESC, dc.id ASC",
+            )
         params: tuple[Any, ...] = ()
         if limit is not None:
             query += " LIMIT ?"
@@ -643,6 +780,7 @@ class Database:
             "images_by_role": {row["role"]: row["total"] for row in image_rows},
             "candidates": self.candidate_counts(),
             "selection": self.selection_counts(),
+            "category": self.category_counts(),
         }
 
     def log_action(

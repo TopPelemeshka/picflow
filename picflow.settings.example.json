@@ -21,6 +21,13 @@
     ".bmp",
     ".gif"
   ],
+  "export_categories": [
+    "ero-anime",
+    "ero-real",
+    "standart-art",
+    "standart-meme",
+    "single-meme"
+  ],
   "duplicate_thresholds": {
     "phash_distance": 12,
     "dhash_distance": 12,
@@ -31,7 +38,8 @@
     "max_candidates_per_image": 12
   },
   "verification": {
-    "base_url": "http://127.0.0.1:12334/v1beta",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "proxy_url": "http://127.0.0.1:12334",
     "model": "gemma-3-27b-it",
     "api_keys": [],
     "request_timeout_sec": 60,

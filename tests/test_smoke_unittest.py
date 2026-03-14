@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
 from picflow.config import AppConfig, DuplicateThresholds
+from picflow.categorization import plan_export_actions
 from picflow.db import Database
 from picflow.duplicates import build_duplicate_candidates, compare_images, plan_duplicate_actions, scan_library, utc_now
 from picflow.hashing import image_record_for_path
@@ -165,6 +166,27 @@ class PicFlowSmokeTests(unittest.TestCase):
         assert targets["bad.jpg"] is not None
         self.assertIn("approved_unsorted", targets["good.jpg"])
         self.assertIn("rejected_pool", targets["bad.jpg"])
+
+    def test_export_plan_moves_categorized_approved_images(self) -> None:
+        tmp_path = self.make_case_dir()
+        config = make_config(tmp_path)
+        approved_dir = config.approved_dir
+        approved_dir.mkdir(parents=True)
+        item_path = approved_dir / "art.jpg"
+        make_image(item_path, "blue", "art")
+
+        db = Database(config.database_path)
+        db.init()
+        scan_library(db, config)
+        item = db.list_category_queue()[0]
+        db.update_category_label(item["id"], "standart-art", "manual", utc_now())
+
+        actions = plan_export_actions(db, config)
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].note, "category=standart-art")
+        assert actions[0].new_path is not None
+        self.assertIn("export", actions[0].new_path)
+        self.assertIn("standart-art", actions[0].new_path)
 
 
 if __name__ == "__main__":

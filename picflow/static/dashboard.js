@@ -35,6 +35,8 @@ function renderStats(payload) {
     statCard("Good", stats.selection.good || 0),
     statCard("Bad", stats.selection.bad || 0),
     statCard("Без отметки", stats.selection.pending || 0),
+    statCard("Категоризировано", stats.category.total - (stats.category.pending || 0) || 0),
+    statCard("К экспорту", stats.category.pending || 0),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");
 }

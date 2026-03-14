@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PicFlow Categorization</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body class="review-page">
+    <main class="review-shell">
+      <aside class="sidebar">
+        <a class="back-link" href="/">← Панель</a>
+        <h1>Категоризация</h1>
+        <label class="field">
+          <span>Фильтр</span>
+          <select id="categoryFilter"></select>
+        </label>
+        <div class="shortcut-list">
+          <div><kbd>1</kbd> ero-anime</div>
+          <div><kbd>2</kbd> ero-real</div>
+          <div><kbd>3</kbd> standart-art</div>
+          <div><kbd>4</kbd> standart-meme</div>
+          <div><kbd>5</kbd> single-meme</div>
+          <div><kbd>B</kbd> blocked</div>
+          <div><kbd>C</kbd> clear</div>
+        </div>
+        <div id="categoryList" class="pair-list"></div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-head">
+          <div>
+            <p class="eyebrow">Категория</p>
+            <h2 id="categoryTitle">Загрузка…</h2>
+          </div>
+          <div class="toolbar">
+            <button id="categoryPrevBtn">← Назад</button>
+            <button id="categoryNextBtn">Вперед →</button>
+          </div>
+        </header>
+
+        <section class="single-viewer">
+          <article class="image-card">
+            <img id="categoryImage" alt="category image">
+            <div class="image-meta" id="categoryMeta"></div>
+          </article>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="decision-row" id="categoryButtons"></div>
+          <div class="toolbar">
+            <button id="categoryAiBtn">Запустить AI-категоризацию</button>
+            <button id="categoryPlanBtn">План экспорта</button>
+            <button id="categoryApplyBtn" class="danger">Экспортировать размеченные</button>
+          </div>
+          <pre id="categoryPlanBox" class="log-box">План еще не запрошен.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/static/categorize.js"></script>
+  </body>
+  </html>
