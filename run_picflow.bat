@@ -9,5 +9,5 @@ if /I "%~1"=="prod" set "CONFIG=picflow.settings.json"
 if not "%~2"=="" set "CONFIG=%~2"
 
 echo Starting PicFlow with config: %CONFIG%
-start "" http://127.0.0.1:8765
+start "" powershell -WindowStyle Hidden -NoProfile -Command "Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:8765'"
 python -m picflow --config "%CONFIG%" runserver
