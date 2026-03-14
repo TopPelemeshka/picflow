@@ -32,6 +32,9 @@ function renderStats(payload) {
     statCard("Кандидаты в дубли", stats.candidates.total || 0),
     statCard("AI/ручные дубли", stats.candidates.duplicate || 0),
     statCard("Блокировки", stats.candidates.blocked || 0),
+    statCard("Good", stats.selection.good || 0),
+    statCard("Bad", stats.selection.bad || 0),
+    statCard("Без отметки", stats.selection.pending || 0),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");
 }

@@ -240,10 +240,10 @@ def build_duplicate_candidates(
                     "center_phash_distance": metrics["center_phash_distance"],
                     "center_dhash_distance": metrics["center_dhash_distance"],
                     "size_ratio": metrics["size_ratio"],
-                    "ai_label": None,
-                    "ai_confidence": None,
-                    "ai_reason": "",
-                    "ai_raw_response": "",
+                    "ai_label": "duplicate" if metrics["exact_hash_match"] else None,
+                    "ai_confidence": 1.0 if metrics["exact_hash_match"] else None,
+                    "ai_reason": "Exact SHA-256 match" if metrics["exact_hash_match"] else "",
+                    "ai_raw_response": "local-exact-hash" if metrics["exact_hash_match"] else "",
                     "manual_label": None,
                     "created_at": utc_now(),
                     "updated_at": utc_now(),
@@ -391,6 +391,12 @@ def apply_planned_actions(
             target.parent.mkdir(parents=True, exist_ok=True)
             if old_path.exists():
                 old_path.rename(target)
+            renamed += 1
+        elif action.kind == "move":
+            target = Path(action.new_path or "")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if old_path.exists():
+                shutil.move(str(old_path), str(target))
             renamed += 1
         db.log_action(
             action.kind,

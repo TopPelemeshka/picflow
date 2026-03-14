@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PicFlow Selection</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body class="review-page">
+    <main class="review-shell">
+      <aside class="sidebar">
+        <a class="back-link" href="/">← Панель</a>
+        <h1>Good / Bad отбор</h1>
+        <label class="field">
+          <span>Фильтр</span>
+          <select id="selectionFilter">
+            <option value="all">Все входящие</option>
+            <option value="pending">Без отметки</option>
+            <option value="good">Только good</option>
+            <option value="bad">Только bad</option>
+          </select>
+        </label>
+        <div class="shortcut-list">
+          <div><kbd>G</kbd> Good</div>
+          <div><kbd>B</kbd> Bad</div>
+          <div><kbd>C</kbd> Сброс</div>
+          <div><kbd>←</kbd> Назад</div>
+          <div><kbd>→</kbd> Вперед</div>
+        </div>
+        <div id="selectionList" class="pair-list"></div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-head">
+          <div>
+            <p class="eyebrow">Отбор</p>
+            <h2 id="selectionTitle">Загрузка…</h2>
+          </div>
+          <div class="toolbar">
+            <button id="selectionPrevBtn">← Назад</button>
+            <button id="selectionNextBtn">Вперед →</button>
+          </div>
+        </header>
+
+        <section class="single-viewer">
+          <article class="image-card">
+            <img id="selectionImage" alt="selection image">
+            <div class="image-meta" id="selectionMeta"></div>
+          </article>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="decision-row">
+            <button class="primary" data-selection-label="good">G: Good</button>
+            <button data-selection-label="bad">B: Bad</button>
+            <button data-selection-label="clear">C: Сбросить метку</button>
+          </div>
+          <div class="toolbar">
+            <button id="selectionPlanBtn">План до текущей картинки</button>
+            <button id="selectionApplyBtn" class="danger">Разобрать просмотренный префикс</button>
+          </div>
+          <pre id="selectionPlanBox" class="log-box">План еще не запрошен.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/static/selection.js"></script>
+  </body>
+  </html>

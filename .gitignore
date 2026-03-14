@@ -1,4 +1,5 @@
 .picflow/
+.picflow_test/
 __pycache__/
 .pytest_cache/
 .pytest_tmp/

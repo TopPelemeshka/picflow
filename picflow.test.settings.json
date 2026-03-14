@@ -1,0 +1,43 @@
+{
+  "project_root": "D:\\picflow",
+  "library_root": "D:\\tg-bot_photo_test",
+  "reference_dir_name": "all_photos",
+  "export_dir_name": "export",
+  "approved_dir_name": "approved_unsorted",
+  "rejected_dir_name": "rejected_pool",
+  "excluded_top_level_dirs": [
+    "13_old_export"
+  ],
+  "state_dir": "D:\\picflow\\.picflow_test",
+  "database_path": "D:\\picflow\\.picflow_test\\picflow.sqlite3",
+  "thumbnail_dir": "D:\\picflow\\.picflow_test\\thumbnails",
+  "quarantine_dir": "D:\\picflow\\.picflow_test\\quarantine_duplicates",
+  "duplicate_action": "delete",
+  "supported_extensions": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".bmp",
+    ".gif"
+  ],
+  "duplicate_thresholds": {
+    "phash_distance": 12,
+    "dhash_distance": 12,
+    "ahash_distance": 10,
+    "center_phash_distance": 10,
+    "center_dhash_distance": 12,
+    "min_size_ratio": 0.45,
+    "max_candidates_per_image": 12
+  },
+  "verification": {
+    "base_url": "http://127.0.0.1:12334/v1beta",
+    "model": "gemma-3-27b-it",
+    "api_keys": [],
+    "request_timeout_sec": 60,
+    "max_image_side": 1024,
+    "jpeg_quality": 85,
+    "prompt_version": "v1",
+    "concurrency": 3
+  }
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -153,16 +154,27 @@ class AppConfig:
             verification=verification,
         )
 
-    def save(self, path: Path = DEFAULT_CONFIG_PATH) -> None:
-        path.write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+    def save(self, path: Path | None = None) -> None:
+        target = resolve_config_path(path)
+        target.write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def load_or_create_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
-    if path.exists():
-        payload = json.loads(path.read_text(encoding="utf-8"))
+def resolve_config_path(path: Path | str | None = None) -> Path:
+    if path is not None:
+        return Path(path)
+    env_path = os.environ.get("PICFLOW_CONFIG")
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_CONFIG_PATH
+
+
+def load_or_create_config(path: Path | str | None = None) -> AppConfig:
+    target = resolve_config_path(path)
+    if target.exists():
+        payload = json.loads(target.read_text(encoding="utf-8"))
         config = AppConfig.from_dict(payload)
     else:
         config = AppConfig()
-        config.save(path)
+        config.save(target)
     config.ensure_state_dirs()
     return config

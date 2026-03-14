@@ -7,16 +7,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .config import AppConfig, load_or_create_config
+from .config import AppConfig, load_or_create_config, resolve_config_path
 from .db import Database
 from .duplicates import apply_planned_actions, build_duplicate_candidates, plan_duplicate_actions, scan_library, utc_now
 from .jobs import JobManager
+from .selection import apply_selection_actions, list_selection_items, plan_selection_actions
 from .verifier import run_verification
 
 
 class PicFlowApp:
-    def __init__(self, config: AppConfig | None = None) -> None:
-        self.config = config or load_or_create_config()
+    def __init__(self, config: AppConfig | None = None, config_path: Path | str | None = None) -> None:
+        self.config_path = resolve_config_path(config_path)
+        self.config = config or load_or_create_config(self.config_path)
         self.db = Database(self.config.database_path)
         self.db.init()
         self.jobs = JobManager(self.db)
@@ -40,6 +42,7 @@ class PicFlowApp:
             "stats": self.db.stats(),
             "jobs": self.db.list_jobs(),
             "config": {
+                "config_path": str(self.config_path),
                 "library_root": str(self.config.library_root),
                 "reference_dir": str(self.config.reference_dir),
                 "export_dir": str(self.config.export_dir),
@@ -74,6 +77,9 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         if parsed.path == "/duplicates":
             self._serve_file(Path(__file__).resolve().parent / "templates" / "duplicates.html", "text/html; charset=utf-8")
             return
+        if parsed.path == "/selection":
+            self._serve_file(Path(__file__).resolve().parent / "templates" / "selection.html", "text/html; charset=utf-8")
+            return
         if parsed.path.startswith("/static/"):
             target = Path(__file__).resolve().parent / parsed.path.lstrip("/")
             if target.exists():
@@ -95,6 +101,14 @@ class PicFlowHandler(BaseHTTPRequestHandler):
             limit = int(query.get("limit", ["50"])[0])
             offset = int(query.get("offset", ["0"])[0])
             items = self.app.list_candidates(filter_mode, limit, offset)
+            self._send_json({"items": items, "filter": filter_mode, "offset": offset, "limit": limit})
+            return
+        if parsed.path == "/api/selection":
+            query = parse_qs(parsed.query)
+            filter_mode = query.get("filter", ["all"])[0]
+            limit = int(query.get("limit", ["120"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            items = list_selection_items(self.app.db, self.app.config, filter_mode, limit, offset)
             self._send_json({"items": items, "filter": filter_mode, "offset": offset, "limit": limit})
             return
         if parsed.path.startswith("/api/duplicates/"):
@@ -139,8 +153,17 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/duplicates/apply":
             self._apply_actions_job()
             return
+        if parsed.path == "/api/selection/apply-plan":
+            self._selection_plan(body)
+            return
+        if parsed.path == "/api/selection/apply":
+            self._apply_selection_job(body)
+            return
         if parsed.path.startswith("/api/duplicates/") and parsed.path.endswith("/label"):
             self._label_candidate(parsed.path, body)
+            return
+        if parsed.path.startswith("/api/selection/") and parsed.path.endswith("/label"):
+            self._label_selection(parsed.path, body)
             return
         self._send_error_json(HTTPStatus.NOT_FOUND, "Не найдено")
 
@@ -212,6 +235,58 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         candidate = self.app.get_candidate(candidate_id)
         self._send_json(candidate or {"ok": True})
 
+    def _label_selection(self, path: str, body: dict) -> None:
+        parts = path.strip("/").split("/")
+        try:
+            image_id = int(parts[2])
+        except (IndexError, ValueError):
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный id")
+            return
+        label = body.get("label")
+        if label == "clear":
+            label = None
+        if label not in {None, "good", "bad"}:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректная метка")
+            return
+        self.app.db.update_selection_label(image_id, label, utc_now())
+        self._send_json({"ok": True, "id": image_id, "label": label})
+
+    def _selection_plan(self, body: dict) -> None:
+        through_image_id = int(body.get("through_image_id", 0))
+        if not through_image_id:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужен through_image_id")
+            return
+        actions = plan_selection_actions(self.app.db, self.app.config, through_image_id)
+        good = sum(1 for action in actions if "selection=good" in action.note)
+        bad = sum(1 for action in actions if "selection=bad" in action.note)
+        preview = [
+            {
+                "kind": action.kind,
+                "old_path": action.old_path,
+                "new_path": action.new_path,
+                "note": action.note,
+            }
+            for action in actions[:100]
+        ]
+        self._send_json({"total": len(actions), "good": good, "bad": bad, "preview": preview})
+
+    def _apply_selection_job(self, body: dict) -> None:
+        through_image_id = int(body.get("through_image_id", 0))
+        if not through_image_id:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужен through_image_id")
+            return
+        job_id = self.app.jobs.start_job(
+            "selection_apply",
+            {"through_image_id": through_image_id},
+            lambda progress: apply_selection_actions(
+                self.app.db,
+                self.app.config,
+                through_image_id,
+                progress=progress,
+            ),
+        )
+        self._send_json({"job_id": job_id})
+
     def _serve_media(self, parsed) -> None:
         query = parse_qs(parsed.query)
         requested = query.get("path", [""])[0]
@@ -253,8 +328,8 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         return
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
-    app = PicFlowApp()
+def run_server(host: str = "127.0.0.1", port: int = 8765, config_path: Path | str | None = None) -> None:
+    app = PicFlowApp(config_path=config_path)
     server = ThreadingHTTPServer((host, port), PicFlowHandler)
     server.app = app  # type: ignore[attr-defined]
     print(f"PicFlow running on http://{host}:{port}")

@@ -11,6 +11,7 @@ from .web import run_server
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PicFlow")
+    parser.add_argument("--config", default=None, help="Путь к конфигу PicFlow")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("runserver", help="Запустить локальный веб-интерфейс")
@@ -21,12 +22,12 @@ def main() -> None:
     subparsers.add_parser("plan", help="Показать план удаления дублей")
 
     args = parser.parse_args()
-    config = load_or_create_config()
+    config = load_or_create_config(args.config)
     db = Database(config.database_path)
     db.init()
 
     if args.command == "runserver":
-        run_server()
+        run_server(config_path=args.config)
         return
     if args.command == "scan":
         print(scan_library(db, config))

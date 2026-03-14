@@ -30,6 +30,12 @@ python -m picflow runserver
 
 После запуска интерфейс будет доступен на [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
+Для тестового каталога `D:\tg-bot_photo_test` уже добавлен отдельный конфиг `picflow.test.settings.json`:
+
+```powershell
+python -m picflow --config picflow.test.settings.json runserver
+```
+
 ## CLI команды
 
 ```powershell
@@ -37,6 +43,7 @@ python -m picflow scan
 python -m picflow candidates
 python -m picflow verify --limit 200
 python -m picflow plan
+python -m picflow --config picflow.test.settings.json scan
 ```
 
 ## Важные замечания

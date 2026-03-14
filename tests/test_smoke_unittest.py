@@ -10,6 +10,7 @@ from picflow.config import AppConfig, DuplicateThresholds
 from picflow.db import Database
 from picflow.duplicates import build_duplicate_candidates, compare_images, plan_duplicate_actions, scan_library, utc_now
 from picflow.hashing import image_record_for_path
+from picflow.selection import plan_selection_actions
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -133,6 +134,37 @@ class PicFlowSmokeTests(unittest.TestCase):
         self.assertIsNotNone(rename_actions[0].new_path)
         assert rename_actions[0].new_path is not None
         self.assertIn("2_batch", rename_actions[0].new_path)
+
+    def test_selection_plan_splits_good_and_bad(self) -> None:
+        tmp_path = self.make_case_dir()
+        config = make_config(tmp_path)
+        batch_dir = config.library_root / "1_batch"
+        batch_dir.mkdir(parents=True)
+
+        good_path = batch_dir / "good.jpg"
+        bad_path = batch_dir / "bad.jpg"
+        make_image(good_path, "green", "good")
+        make_image(bad_path, "red", "bad")
+
+        db = Database(config.database_path)
+        db.init()
+        scan_library(db, config)
+        queue = db.list_selection_queue()
+        queue_by_name = {item["file_name"]: item for item in queue}
+        db.update_selection_label(queue_by_name["good.jpg"]["id"], "good", utc_now())
+
+        actions = plan_selection_actions(db, config, queue_by_name["good.jpg"]["id"])
+        if len(actions) == 1:
+            actions = plan_selection_actions(db, config, queue_by_name["bad.jpg"]["id"])
+        self.assertEqual(len(actions), 2)
+        notes = {Path(action.old_path).name: action.note for action in actions}
+        targets = {Path(action.old_path).name: action.new_path for action in actions}
+        self.assertEqual(notes["good.jpg"], "selection=good")
+        self.assertEqual(notes["bad.jpg"], "selection=bad")
+        assert targets["good.jpg"] is not None
+        assert targets["bad.jpg"] is not None
+        self.assertIn("approved_unsorted", targets["good.jpg"])
+        self.assertIn("rejected_pool", targets["bad.jpg"])
 
 
 if __name__ == "__main__":

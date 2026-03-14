@@ -29,6 +29,8 @@ SELECT
   center_dhash,
   color_signature,
   thumbnail_path,
+  selection_label,
+  selection_updated_at,
   last_scanned_at,
   is_deleted
 FROM images
@@ -76,6 +78,8 @@ class Database:
                   center_dhash TEXT NOT NULL,
                   color_signature TEXT NOT NULL,
                   thumbnail_path TEXT,
+                  selection_label TEXT,
+                  selection_updated_at TEXT,
                   last_scanned_at TEXT NOT NULL,
                   is_deleted INTEGER NOT NULL DEFAULT 0
                 );
@@ -134,6 +138,13 @@ class Database:
                 );
                 """
             )
+            self._ensure_column(conn, "images", "selection_label", "TEXT")
+            self._ensure_column(conn, "images", "selection_updated_at", "TEXT")
+
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        current = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in current:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def fetch_image_index(self) -> dict[str, dict[str, Any]]:
         with self.connect() as conn:
@@ -400,6 +411,89 @@ class Database:
         counts["total"] = sum(counts.values())
         return counts
 
+    def list_selection_images(
+        self,
+        filter_mode: str = "all",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        where = "WHERE is_deleted = 0 AND role = 'incoming'"
+        if filter_mode == "pending":
+            where += " AND COALESCE(selection_label, 'pending') = 'pending'"
+        elif filter_mode == "good":
+            where += " AND selection_label = 'good'"
+        elif filter_mode == "bad":
+            where += " AND selection_label = 'bad'"
+        query = f"""
+        SELECT
+          id,
+          path,
+          root_name,
+          role,
+          file_name,
+          width,
+          height,
+          size_bytes,
+          thumbnail_path,
+          selection_label,
+          selection_updated_at
+        FROM images
+        {where}
+        ORDER BY root_name ASC, path ASC
+        LIMIT ? OFFSET ?
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, (limit, offset)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_selection_queue(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                  id,
+                  path,
+                  root_name,
+                  role,
+                  file_name,
+                  width,
+                  height,
+                  size_bytes,
+                  thumbnail_path,
+                  selection_label,
+                  selection_updated_at
+                FROM images
+                WHERE is_deleted = 0 AND role = 'incoming'
+                ORDER BY root_name ASC, path ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_selection_label(self, image_id: int, label: str | None, updated_at: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE images
+                SET selection_label = ?, selection_updated_at = ?
+                WHERE id = ?
+                """,
+                (label, updated_at, image_id),
+            )
+
+    def selection_counts(self) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT COALESCE(selection_label, 'pending') AS label, COUNT(*) AS total
+                FROM images
+                WHERE is_deleted = 0 AND role = 'incoming'
+                GROUP BY COALESCE(selection_label, 'pending')
+                """
+            ).fetchall()
+        counts = {row["label"]: row["total"] for row in rows}
+        counts["total"] = sum(counts.values())
+        return counts
+
     def list_candidates_for_verification(self, limit: int | None = None) -> list[dict[str, Any]]:
         query = """
         SELECT
@@ -548,6 +642,7 @@ class Database:
             "images_total": image_total,
             "images_by_role": {row["role"]: row["total"] for row in image_rows},
             "candidates": self.candidate_counts(),
+            "selection": self.selection_counts(),
         }
 
     def log_action(
