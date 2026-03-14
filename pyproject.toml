@@ -1,0 +1,14 @@
+[project]
+name = "picflow"
+version = "0.1.0"
+description = "Local photo triage pipeline for Telegram content"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=1.26",
+  "Pillow>=10.2",
+  "requests>=2.31",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--basetemp=pytest_tmp"

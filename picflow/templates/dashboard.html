@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PicFlow</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body class="dashboard-page">
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">PicFlow</p>
+          <h1>Отбор картинок без ручного хаоса</h1>
+          <p class="lead">
+            Первый этап уже рабочий: сканирование библиотеки, поиск кандидатов в дубли,
+            AI-проверка пар и ручной ревью-интерфейс.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="scanBtn" class="primary">1. Сканировать библиотеку</button>
+          <button id="candidateBtn">2. Построить кандидатов</button>
+          <button id="verifyBtn">3. Запустить AI-проверку</button>
+          <a class="link-button" href="/duplicates">Открыть ревью дублей</a>
+        </div>
+      </section>
+
+      <section class="cards" id="statsGrid"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>План удаления</h2>
+          <div class="toolbar">
+            <button id="planBtn">Показать план</button>
+            <button id="applyBtn" class="danger">Подтвердить удаление дублей</button>
+          </div>
+        </div>
+        <pre id="planBox" class="log-box">План еще не запрошен.</pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Фоновые задачи</h2>
+          <button id="refreshBtn">Обновить</button>
+        </div>
+        <div id="jobsBox" class="job-list"></div>
+      </section>
+
+      <section class="panel roadmap">
+        <h2>Следующие этапы</h2>
+        <div class="roadmap-grid">
+          <article>
+            <h3>Этап 2</h3>
+            <p>Интерфейс быстрого лайка/дизлайка с горячими клавишами и разбором просмотренных файлов по папкам good/bad.</p>
+          </article>
+          <article>
+            <h3>Этап 3</h3>
+            <p>Автокатегоризация по 5 категориям, ручная корректировка и экспорт в `export/*`.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="/static/dashboard.js"></script>
+  </body>
+  </html>

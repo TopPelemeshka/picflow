@@ -1,0 +1,9 @@
+.picflow/
+__pycache__/
+.pytest_cache/
+.pytest_tmp/
+pytest_tmp/
+debug_hash/
+test_scratch/
+write_check.txt
+write_check_dir/
