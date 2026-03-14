@@ -6,76 +6,128 @@
     <title>PicFlow</title>
     <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body class="dashboard-page">
-    <main class="shell">
-      <section class="hero">
-        <div>
+  <body class="page-home">
+    <main class="home-shell">
+      <section class="hero-card">
+        <div class="hero-copy">
           <p class="eyebrow">PicFlow</p>
-          <h1>Поток отбора картинок без ручного хаоса</h1>
-          <p class="lead">
-            Дедупликация, быстрый good/bad отбор, категоризация и экспорт собраны
-            в одном локальном веб-интерфейсе.
+          <h1>Пошаговый поток отбора изображений</h1>
+          <p class="hero-text">
+            Сначала убираем дубли, потом отделяем хорошие картинки от мусора,
+            потом раскладываем отобранное по категориям. Здесь каждая кнопка
+            относится к конкретному следующему шагу, а не к абстрактной панели управления.
           </p>
-          <div id="configStrip" class="config-strip"></div>
+          <div id="configStrip" class="fact-row"></div>
         </div>
-        <div class="hero-actions">
-          <button id="scanBtn" class="primary">1. Сканировать библиотеку</button>
-          <button id="candidateBtn">2. Построить кандидатов</button>
-          <button id="verifyBtn">3. AI для необработанных пар</button>
-          <button id="verifyForceBtn">4. AI для всех пар</button>
-          <a class="link-button" href="/duplicates">Ревью дублей</a>
-          <a class="link-button" href="/selection">Good / Bad</a>
-          <a class="link-button" href="/categorize">Категоризация</a>
-        </div>
+        <aside class="hero-note">
+          <div class="hero-note__header">
+            <h2>Как этим пользоваться</h2>
+            <button id="refreshBtn" class="ghost-button">Обновить данные</button>
+          </div>
+          <ol class="mini-steps">
+            <li>Запусти сканирование, чтобы обновить базу файлов.</li>
+            <li>Построй кандидатов в дубли и открой страницу ручной проверки.</li>
+            <li>После удаления дублей перейди к good / bad отбору.</li>
+            <li>Когда хорошие картинки собраны, разметь категории и экспортируй.</li>
+          </ol>
+        </aside>
       </section>
 
-      <section class="cards" id="statsGrid"></section>
+      <section id="statsGrid" class="status-grid"></section>
 
-      <section class="panel two-column">
-        <article>
-          <div class="panel-head">
-            <h2>План удаления дублей</h2>
-            <div class="toolbar">
-              <button id="planBtn">Показать план</button>
-              <button id="applyBtn" class="danger">Применить план</button>
+      <section class="step-layout">
+        <article class="step-card">
+          <div class="step-label">Шаг 1</div>
+          <h2>Найти и убрать дубли</h2>
+          <p>
+            Этот шаг нужен всегда первым. Он сравнивает новые фото с `all_photos`,
+            между собой и с уже отсеянными файлами, после чего ты проверяешь спорные пары.
+          </p>
+          <ul class="step-list">
+            <li>`Сканировать библиотеку` перечитывает папки и обновляет индекс.</li>
+            <li>`Построить кандидатов` ищет похожие изображения по хэшам.</li>
+            <li>AI-проверка уточняет спорные пары перед ручным просмотром.</li>
+          </ul>
+          <div class="action-grid">
+            <button id="scanBtn" class="primary">Сканировать библиотеку</button>
+            <button id="candidateBtn">Построить кандидатов</button>
+            <button id="verifyBtn">AI для необработанных пар</button>
+            <button id="verifyForceBtn">AI для всех пар</button>
+            <a class="link-button" href="/duplicates">Открыть страницу дублей</a>
+          </div>
+          <div class="inline-actions">
+            <button id="planBtn">Показать план удаления</button>
+            <button id="applyBtn" class="danger">Применить удаление дублей</button>
+          </div>
+          <div class="note-box">
+            Приоритет сохранения уже заложен: файлы из `all_photos` и `export` сохраняются,
+            а удаление в первую очередь затрагивает новые или временные папки.
+          </div>
+          <pre id="planBox" class="log-box">План удаления еще не запрошен.</pre>
+        </article>
+
+        <article class="step-card">
+          <div class="step-label">Шаг 2</div>
+          <h2>Отобрать good / bad</h2>
+          <p>
+            После дедупликации открывается поток входящих фото. Ты быстро листаешь их,
+            ставишь `good` или `bad`, а потом разносишь уже просмотренный блок по нужным папкам.
+          </p>
+          <ul class="step-list">
+            <li>`good` идет в `approved_unsorted`.</li>
+            <li>`bad` идет в `rejected_pool` для будущего удаления дублей.</li>
+            <li>Разнос затрагивает только изображения от начала очереди до текущей карточки.</li>
+          </ul>
+          <div class="action-grid action-grid--single">
+            <a class="link-button primary" href="/selection">Открыть good / bad отбор</a>
+          </div>
+          <div class="note-box">
+            Это удобно для больших пачек: можно разбирать библиотеку частями, не дожидаясь конца всей очереди.
+          </div>
+        </article>
+
+        <article class="step-card">
+          <div class="step-label">Шаг 3</div>
+          <h2>Разложить по категориям и экспортировать</h2>
+          <p>
+            На этом шаге используются только уже отобранные хорошие картинки из `approved_unsorted`.
+            AI помогает с первичной разметкой, но окончательное подтверждение остается у тебя.
+          </p>
+          <ul class="step-list">
+            <li>`ero-real` — реальные эротические фото.</li>
+            <li>`ero-anime` — эротические рисунки и аниме.</li>
+            <li>`standart-art` — красивые или просто забавные картинки, не тянущие на мемы.</li>
+            <li>`standart-meme` и `single-meme` — уже полноценные мемные единицы.</li>
+          </ul>
+          <div class="action-grid action-grid--single">
+            <a class="link-button primary" href="/categorize">Открыть категоризацию</a>
+          </div>
+          <div class="note-box">
+            Экспорт отправляет только уже размеченные фото в `export/<category>`.
+          </div>
+        </article>
+      </section>
+
+      <section class="info-layout">
+        <article class="panel-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Конфиг</p>
+              <h2>Текущая конфигурация</h2>
             </div>
           </div>
-          <pre id="planBox" class="log-box">План еще не запрошен.</pre>
+          <div id="configBox" class="config-list"></div>
         </article>
-        <article>
-          <div class="panel-head">
-            <h2>Текущая конфигурация</h2>
-            <button id="refreshBtn">Обновить</button>
+
+        <article class="panel-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Фон</p>
+              <h2>Фоновые задачи</h2>
+            </div>
           </div>
-          <div id="configBox" class="config-box"></div>
+          <div id="jobsBox" class="job-list"></div>
         </article>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Фоновые задачи</h2>
-        </div>
-        <div id="jobsBox" class="job-list"></div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Поток работы</h2>
-        </div>
-        <div class="roadmap-grid">
-          <article>
-            <h3>1. Дедупликация</h3>
-            <p>Сканируй библиотеку, построй кандидатов, запусти AI и проверь спорные пары на странице дублей.</p>
-          </article>
-          <article>
-            <h3>2. Good / Bad</h3>
-            <p>Оцени входящие фото горячими клавишами и разнеси просмотренный префикс в approved и rejected.</p>
-          </article>
-          <article>
-            <h3>3. Категоризация</h3>
-            <p>Разметь approved фото вручную или через AI, затем отправь готовые файлы в export.</p>
-          </article>
-        </div>
       </section>
     </main>
     <script src="/static/dashboard.js"></script>

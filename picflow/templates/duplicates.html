@@ -6,75 +6,63 @@
     <title>PicFlow Duplicate Review</title>
     <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body class="review-page">
-    <main class="review-shell">
-      <aside class="sidebar">
-        <a class="back-link" href="/"><- Панель</a>
-        <h1>Ревью дублей</h1>
-        <div id="duplicatesSummary" class="summary-box"></div>
-        <label class="field">
-          <span>Фильтр</span>
-          <select id="filterSelect">
-            <option value="needs-review">Нуждаются в проверке</option>
-            <option value="duplicates">Помечены как дубли</option>
-            <option value="blocked">Blocked / цензура</option>
-            <option value="distinct">Не дубли</option>
-            <option value="all">Все пары</option>
-          </select>
-        </label>
-        <div class="toolbar stack-toolbar">
-          <button id="verifyPendingBtn">AI для необработанных</button>
-          <button id="verifyForceBtn">AI для всех пар</button>
-          <button id="showDeletePlanBtn">План удаления</button>
-          <button id="applyDeletePlanBtn" class="danger">Применить удаление</button>
+  <body class="page-review">
+    <main class="review-shell review-shell--wide">
+      <header class="page-top">
+        <div>
+          <a class="back-link" href="/">Назад к шагам</a>
+          <p class="eyebrow">Шаг 1</p>
+          <h1>Проверка дублей</h1>
+          <p class="page-intro">
+            Здесь больше нет режима “одна пара на весь экран”. Страница показывает до 50 карточек за раз:
+            просто листай вниз, смотри пары и сразу ставь правильную метку на каждой.
+          </p>
         </div>
-        <div class="shortcut-list">
-          <div><kbd>D</kbd> Дубликат</div>
-          <div><kbd>N</kbd> Не дубликат</div>
-          <div><kbd>B</kbd> Blocked</div>
-          <div><kbd>C</kbd> Сброс ручной метки</div>
-          <div><kbd>Left</kbd> Назад</div>
-          <div><kbd>Right</kbd> Вперед</div>
+        <div id="duplicatesSummary" class="summary-grid"></div>
+      </header>
+
+      <section class="panel-card controls-card">
+        <div class="controls-grid">
+          <label class="field">
+            <span>Какие пары показывать</span>
+            <select id="filterSelect">
+              <option value="needs-review">Нуждаются в проверке</option>
+              <option value="duplicates">Помечены как дубли</option>
+              <option value="blocked">Blocked / цензура</option>
+              <option value="distinct">Не дубли</option>
+              <option value="all">Все пары</option>
+            </select>
+          </label>
+
+          <div class="pager-row">
+            <button id="pagePrevBtn">Предыдущая страница</button>
+            <div id="pageIndicator" class="page-pill">Страница 1</div>
+            <button id="pageNextBtn">Следующая страница</button>
+          </div>
+
+          <div class="action-strip">
+            <button id="verifyPendingBtn">AI для необработанных</button>
+            <button id="verifyForceBtn">AI для всех пар</button>
+            <button id="showDeletePlanBtn">Показать план удаления</button>
+            <button id="applyDeletePlanBtn" class="danger">Применить удаление</button>
+          </div>
         </div>
-        <div id="pairCounter" class="counter-box"></div>
-        <div id="pairList" class="pair-list"></div>
-      </aside>
 
-      <section class="workspace">
-        <header class="workspace-head">
-          <div>
-            <p class="eyebrow">Пара</p>
-            <h2 id="pairTitle">Загрузка...</h2>
-          </div>
-          <div class="toolbar">
-            <button id="prevBtn"><- Назад</button>
-            <button id="nextBtn">Вперед -></button>
-          </div>
-        </header>
+        <div class="note-box">
+          Если хочешь использовать горячие клавиши, просто кликни по карточке пары.
+          После этого работают `D` — duplicate, `N` — distinct, `B` — blocked, `C` — clear.
+        </div>
 
-        <section class="viewer">
-          <article class="image-card">
-            <img id="leftImage" alt="left">
-            <div class="image-meta" id="leftMeta"></div>
-          </article>
-          <article class="image-card">
-            <img id="rightImage" alt="right">
-            <div class="image-meta" id="rightMeta"></div>
-          </article>
-        </section>
-
-        <section class="panel detail-panel">
-          <div class="decision-row">
-            <button class="primary" data-label="duplicate">D: Дубликат</button>
-            <button data-label="distinct">N: Не дубликат</button>
-            <button data-label="blocked">B: Blocked</button>
-            <button data-label="clear">C: Сбросить ручную метку</button>
-          </div>
-          <div id="metricsBox" class="metrics"></div>
-          <pre id="reasonBox" class="log-box">AI-ответ появится здесь.</pre>
-          <pre id="deletePlanBox" class="log-box secondary-log">План удаления пока не загружен.</pre>
-        </section>
+        <pre id="duplicatesLog" class="log-box">AI-ответы и план удаления будут появляться здесь.</pre>
       </section>
+
+      <section id="pairFeed" class="pair-feed"></section>
+
+      <footer class="pager-footer">
+        <button id="pagePrevBtnBottom">Предыдущая страница</button>
+        <div id="pageIndicatorBottom" class="page-pill">Страница 1</div>
+        <button id="pageNextBtnBottom">Следующая страница</button>
+      </footer>
     </main>
     <script src="/static/duplicates.js"></script>
   </body>

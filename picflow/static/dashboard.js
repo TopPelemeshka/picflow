@@ -10,12 +10,20 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-function statCard(title, value, detail = "") {
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function statusCard(title, value, detail = "") {
   return `
-    <article class="stat-card">
-      <div>${title}</div>
-      <span class="value">${value}</span>
-      <div>${detail}</div>
+    <article class="status-card">
+      <div>${escapeHtml(title)}</div>
+      <div class="status-card__value">${escapeHtml(value)}</div>
+      <div class="status-card__detail">${escapeHtml(detail)}</div>
     </article>
   `;
 }
@@ -27,18 +35,14 @@ function renderStats(payload) {
   const category = stats.category || {};
   const categoryReady = (category.total || 0) - (category.pending || 0);
   const cards = [
-    statCard("Всего фото", stats.images_total || 0),
-    statCard("Эталон", roles.reference || 0),
-    statCard("Входящие", roles.incoming || 0),
-    statCard("Approved", roles.approved || 0),
-    statCard("Rejected", roles.rejected || 0),
-    statCard("Кандидаты в дубли", stats.candidates.total || 0),
-    statCard("Помечены как дубли", stats.candidates.duplicate || 0),
-    statCard("Good", selection.good || 0),
-    statCard("Bad", selection.bad || 0),
-    statCard("Без оценки", selection.pending || 0),
-    statCard("Категории готовы", categoryReady || 0),
-    statCard("Ждут категории", category.pending || 0),
+    statusCard("Всего фото", stats.images_total || 0, "Все активные файлы в индексе"),
+    statusCard("Эталон", roles.reference || 0, "Содержимое all_photos"),
+    statusCard("Входящие", roles.incoming || 0, "Еще не разобранные папки"),
+    statusCard("Дубли", stats.candidates.duplicate || 0, "Уже помечены как duplicate"),
+    statusCard("На проверке", (stats.candidates.total || 0) - (stats.candidates.distinct || 0), "Pending, duplicate и blocked"),
+    statusCard("Good", selection.good || 0, "Уже готово к approved_unsorted"),
+    statusCard("Bad", selection.bad || 0, "Уже готово к rejected_pool"),
+    statusCard("Категории готовы", categoryReady || 0, "Размеченные approved фото"),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");
 }
@@ -54,32 +58,42 @@ function renderConfig(config) {
     ["Модель", config.model],
     ["Прокси", config.proxy_url || "не задан"],
   ];
+
   document.getElementById("configStrip").innerHTML = rows
     .slice(0, 4)
-    .map(([label, value]) => `<span class="pill"><strong>${label}:</strong> ${value}</span>`)
+    .map(([label, value]) => `<span class="fact-pill"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</span>`)
     .join("");
+
   document.getElementById("configBox").innerHTML = rows
-    .map(([label, value]) => `<div class="config-row"><strong>${label}</strong><span>${value}</span></div>`)
+    .map(
+      ([label, value]) => `
+        <article class="config-item">
+          <div class="config-item__label">${escapeHtml(label)}</div>
+          <div class="config-item__value">${escapeHtml(value)}</div>
+        </article>
+      `,
+    )
     .join("");
 }
 
 function renderJobs(jobs) {
   const node = document.getElementById("jobsBox");
   if (!jobs.length) {
-    node.innerHTML = "<p>Фоновых задач пока нет.</p>";
+    node.innerHTML = '<div class="empty-state">Фоновых задач сейчас нет.</div>';
     return;
   }
+
   node.innerHTML = jobs
     .map(
       (job) => `
         <article class="job-item">
-          <strong>#${job.id} ${job.kind}</strong>
-          <div>Статус: ${job.status}</div>
+          <strong>#${escapeHtml(job.id)} ${escapeHtml(job.kind)}</strong>
+          <div>Статус: ${escapeHtml(job.status)}</div>
           <div>Прогресс: ${Math.round((job.progress || 0) * 100)}%</div>
-          <div>${job.message || ""}</div>
+          <div>${escapeHtml(job.message || "")}</div>
           ${
             job.result && Object.keys(job.result).length
-              ? `<pre class="log-box">${JSON.stringify(job.result, null, 2)}</pre>`
+              ? `<pre class="log-box">${escapeHtml(JSON.stringify(job.result, null, 2))}</pre>`
               : ""
           }
         </article>
@@ -120,7 +134,7 @@ document.getElementById("candidateBtn").addEventListener("click", () => start("/
 document.getElementById("verifyBtn").addEventListener("click", () => start("/api/verify", { force: false }));
 document.getElementById("verifyForceBtn").addEventListener("click", () => start("/api/verify", { force: true }));
 document.getElementById("applyBtn").addEventListener("click", async () => {
-  const accepted = confirm("Подтвердить применение плана удаления дублей?");
+  const accepted = confirm("Применить план удаления дублей?");
   if (!accepted) return;
   await start("/api/duplicates/apply", {});
 });

@@ -6,58 +6,91 @@
     <title>PicFlow Categorization</title>
     <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body class="review-page">
+  <body class="page-review">
     <main class="review-shell">
-      <aside class="sidebar">
-        <a class="back-link" href="/"><- Панель</a>
-        <h1>Категоризация</h1>
-        <div id="categorySummary" class="summary-box"></div>
-        <label class="field">
-          <span>Фильтр</span>
-          <select id="categoryFilter"></select>
-        </label>
-        <div class="shortcut-list">
-          <div><kbd>1</kbd> ero-anime</div>
-          <div><kbd>2</kbd> ero-real</div>
-          <div><kbd>3</kbd> standart-art</div>
-          <div><kbd>4</kbd> standart-meme</div>
-          <div><kbd>5</kbd> single-meme</div>
-          <div><kbd>B</kbd> blocked</div>
-          <div><kbd>C</kbd> clear</div>
+      <header class="page-top">
+        <div>
+          <a class="back-link" href="/">Назад к шагам</a>
+          <p class="eyebrow">Шаг 3</p>
+          <h1>Категоризация и экспорт</h1>
+          <p class="page-intro">
+            На этой странице лежат только хорошие картинки из `approved_unsorted`.
+            Сначала выставь категории, потом отправь размеченное в `export`.
+          </p>
         </div>
-        <div class="toolbar stack-toolbar">
-          <button id="categoryAiBtn">AI для необработанных</button>
-          <button id="categoryAiForceBtn">AI для всех approved</button>
-          <button id="categoryPlanBtn">План экспорта</button>
-          <button id="categoryApplyBtn" class="danger">Экспортировать размеченные</button>
-        </div>
-        <div id="categoryCounter" class="counter-box"></div>
-        <div id="categoryList" class="pair-list"></div>
-      </aside>
+        <div id="categorySummary" class="summary-grid"></div>
+      </header>
 
-      <section class="workspace">
-        <header class="workspace-head">
-          <div>
-            <p class="eyebrow">Категория</p>
-            <h2 id="categoryTitle">Загрузка...</h2>
-          </div>
-          <div class="toolbar">
-            <button id="categoryPrevBtn"><- Назад</button>
-            <button id="categoryNextBtn">Вперед -></button>
-          </div>
-        </header>
+      <section class="focus-layout">
+        <section class="viewer-column">
+          <article class="panel-card stage-card">
+            <div class="stage-head">
+              <div>
+                <p class="eyebrow">Текущая картинка</p>
+                <h2 id="categoryTitle">Загрузка...</h2>
+              </div>
+              <div class="pager-row pager-row--compact">
+                <button id="categoryPrevBtn">Назад</button>
+                <div id="categoryCounter" class="page-pill">0 / 0</div>
+                <button id="categoryNextBtn">Вперед</button>
+              </div>
+            </div>
 
-        <section class="single-viewer">
-          <article class="image-card">
-            <img id="categoryImage" alt="category image">
-            <div class="image-meta" id="categoryMeta"></div>
+            <div class="helper-line">
+              Если AI ошибся или не смог ответить, просто выставь правильную категорию вручную.
+            </div>
+
+            <div class="image-stage">
+              <div class="image-shell image-shell--single">
+                <img id="categoryImage" alt="category image">
+              </div>
+              <div id="categoryMeta" class="meta-block"></div>
+            </div>
+
+            <div id="categoryButtons" class="decision-bar decision-bar--wrap"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Автоматизация</p>
+                <h2>AI и экспорт</h2>
+              </div>
+            </div>
+            <p class="panel-copy">
+              AI размечает только категории. Экспорт трогает только уже размеченные изображения.
+            </p>
+            <div class="action-grid">
+              <button id="categoryAiBtn">AI для необработанных</button>
+              <button id="categoryAiForceBtn">AI для всех approved</button>
+              <button id="categoryPlanBtn">Показать план экспорта</button>
+              <button id="categoryApplyBtn" class="danger">Экспортировать размеченные</button>
+            </div>
+            <pre id="categoryPlanBox" class="log-box">План еще не запрошен.</pre>
           </article>
         </section>
 
-        <section class="panel detail-panel">
-          <div class="decision-row" id="categoryButtons"></div>
-          <pre id="categoryPlanBox" class="log-box">План еще не запрошен.</pre>
-        </section>
+        <aside class="queue-column">
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Фильтр</p>
+                <h2>Очередь категорий</h2>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>Показывать</span>
+              <select id="categoryFilter"></select>
+            </label>
+
+            <div class="note-box">
+              Быстрые клавиши: `1..5` для категорий, `B` — blocked, `C` — clear.
+            </div>
+
+            <div id="categoryList" class="queue-list"></div>
+          </article>
+        </aside>
       </section>
     </main>
     <script src="/static/categorize.js"></script>

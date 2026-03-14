@@ -10,12 +10,13 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-const state = {
-  filter: "all",
-  items: [],
-  activeIndex: 0,
-  windowRadius: 25,
-};
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 function formatSize(bytes) {
   if (!bytes) return "0 B";
@@ -29,6 +30,13 @@ function formatSize(bytes) {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
+const state = {
+  filter: "all",
+  items: [],
+  activeIndex: 0,
+  windowRadius: 24,
+};
+
 function currentItem() {
   return state.items[state.activeIndex];
 }
@@ -36,48 +44,49 @@ function currentItem() {
 function renderSummary(stats) {
   const selection = stats.selection || {};
   document.getElementById("selectionSummary").innerHTML = [
-    `<div><strong>Всего входящих:</strong> ${selection.total || 0}</div>`,
-    `<div><strong>Good:</strong> ${selection.good || 0}</div>`,
-    `<div><strong>Bad:</strong> ${selection.bad || 0}</div>`,
-    `<div><strong>Без метки:</strong> ${selection.pending || 0}</div>`,
+    `<div><strong>Всего входящих</strong><span>${selection.total || 0}</span></div>`,
+    `<div><strong>Good</strong><span>${selection.good || 0}</span></div>`,
+    `<div><strong>Bad</strong><span>${selection.bad || 0}</span></div>`,
+    `<div><strong>Без метки</strong><span>${selection.pending || 0}</span></div>`,
   ].join("");
 }
 
-function renderList() {
-  const list = document.getElementById("selectionList");
-  const counter = document.getElementById("selectionCounter");
+function renderQueue() {
+  const node = document.getElementById("selectionList");
   if (!state.items.length) {
-    list.innerHTML = "<p>Во входящих папках нет фото под текущий фильтр.</p>";
-    counter.textContent = "0 / 0";
+    node.innerHTML = '<div class="empty-state">Во входящих папках нет картинок под этот фильтр.</div>';
+    document.getElementById("selectionCounter").textContent = "0 / 0";
     return;
   }
-  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+
+  document.getElementById("selectionCounter").textContent = `${state.activeIndex + 1} / ${state.items.length}`;
   const start = Math.max(0, state.activeIndex - state.windowRadius);
   const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
-  list.innerHTML = state.items
+  node.innerHTML = state.items
     .slice(start, end)
     .map((item, offset) => {
       const index = start + offset;
-      const active = index === state.activeIndex ? "active" : "";
+      const active = index === state.activeIndex ? " active" : "";
       return `
-        <article class="pair-item ${active}" data-index="${index}">
-          <strong>${item.file_name}</strong>
-          <div>${item.root_name}</div>
-          <span class="tag">${item.effective_label}</span>
+        <article class="queue-item${active}" data-index="${index}">
+          <strong>${escapeHtml(item.file_name)}</strong>
+          <div>${escapeHtml(item.root_name)}</div>
+          <span class="queue-item__tag">${escapeHtml(item.effective_label)}</span>
         </article>
       `;
     })
     .join("");
-  list.querySelectorAll(".pair-item").forEach((node) => {
-    node.addEventListener("click", () => {
-      state.activeIndex = Number(node.dataset.index);
+
+  node.querySelectorAll("[data-index]").forEach((item) => {
+    item.addEventListener("click", () => {
+      state.activeIndex = Number(item.dataset.index);
       renderCurrent();
     });
   });
 }
 
 function renderCurrent() {
-  renderList();
+  renderQueue();
   const item = currentItem();
   if (!item) {
     document.getElementById("selectionTitle").textContent = "Нет фото";
@@ -85,12 +94,13 @@ function renderCurrent() {
     document.getElementById("selectionMeta").textContent = "";
     return;
   }
+
   document.getElementById("selectionTitle").textContent = `${item.file_name} · ${item.effective_label}`;
   document.getElementById("selectionImage").src = item.media_url;
   document.getElementById("selectionMeta").innerHTML = `
-    <strong>${item.file_name}</strong><br>
-    ${item.root_name} · ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
-    ${item.path}
+    <strong>${escapeHtml(item.file_name)}</strong><br>
+    ${escapeHtml(item.root_name)} · ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
+    ${escapeHtml(item.path)}
   `;
 }
 
@@ -100,11 +110,14 @@ async function loadStats() {
 }
 
 async function loadList(reset = false) {
+  const payload = await api(`/api/selection?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
+  state.items = payload.items;
   if (reset) {
     state.activeIndex = 0;
   }
-  const payload = await api(`/api/selection?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
-  state.items = payload.items;
+  if (state.activeIndex >= state.items.length) {
+    state.activeIndex = Math.max(0, state.items.length - 1);
+  }
   renderCurrent();
 }
 
@@ -140,13 +153,14 @@ async function showPlan() {
 async function applySelection() {
   const item = currentItem();
   if (!item) return;
-  const accepted = confirm("Разобрать входящие фото от начала очереди до текущей картинки?");
+  const accepted = confirm("Разнести просмотренный блок от начала очереди до текущей карточки?");
   if (!accepted) return;
   await api("/api/selection/apply", {
     method: "POST",
     body: JSON.stringify({ through_image_id: item.id }),
   });
-  document.getElementById("selectionPlanBox").textContent = "Задача разнесения просмотренного префикса запущена.";
+  document.getElementById("selectionPlanBox").textContent =
+    "Задача разнесения просмотренного блока запущена.";
 }
 
 document.getElementById("selectionFilter").addEventListener("change", async (event) => {

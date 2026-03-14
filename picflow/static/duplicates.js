@@ -10,12 +10,13 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-const state = {
-  filter: "needs-review",
-  items: [],
-  activeIndex: 0,
-  windowRadius: 20,
-};
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 function formatSize(bytes) {
   if (!bytes) return "0 B";
@@ -29,135 +30,211 @@ function formatSize(bytes) {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
-function currentItem() {
-  return state.items[state.activeIndex];
+function statusClass(label) {
+  if (label === "duplicate") return "status-chip status-chip--duplicate";
+  if (label === "distinct") return "status-chip status-chip--distinct";
+  if (label === "blocked") return "status-chip status-chip--blocked";
+  return "status-chip status-chip--pending";
 }
 
-function renderSummary(stats) {
-  const candidates = stats.candidates || {};
+const state = {
+  filter: "needs-review",
+  items: [],
+  page: 1,
+  pageSize: 50,
+  counts: {},
+  activeId: null,
+};
+
+function totalForFilter() {
+  const counts = state.counts || {};
+  if (state.filter === "duplicates") return counts.duplicate || 0;
+  if (state.filter === "distinct") return counts.distinct || 0;
+  if (state.filter === "blocked") return counts.blocked || 0;
+  if (state.filter === "all") return counts.total || 0;
+  return (counts.total || 0) - (counts.distinct || 0);
+}
+
+function pageCount() {
+  const total = totalForFilter();
+  return total > 0 ? Math.ceil(total / state.pageSize) : 1;
+}
+
+function currentOffset() {
+  return (state.page - 1) * state.pageSize;
+}
+
+function renderSummary() {
+  const counts = state.counts || {};
   document.getElementById("duplicatesSummary").innerHTML = [
-    `<div><strong>Всего пар:</strong> ${candidates.total || 0}</div>`,
-    `<div><strong>Дубликаты:</strong> ${candidates.duplicate || 0}</div>`,
-    `<div><strong>Blocked:</strong> ${candidates.blocked || 0}</div>`,
-    `<div><strong>Distinct:</strong> ${candidates.distinct || 0}</div>`,
+    `<div><strong>Всего пар</strong><span>${counts.total || 0}</span></div>`,
+    `<div><strong>Duplicate</strong><span>${counts.duplicate || 0}</span></div>`,
+    `<div><strong>Blocked</strong><span>${counts.blocked || 0}</span></div>`,
+    `<div><strong>Distinct</strong><span>${counts.distinct || 0}</span></div>`,
   ].join("");
 }
 
-function renderList() {
-  const list = document.getElementById("pairList");
-  const counter = document.getElementById("pairCounter");
+function renderPager() {
+  const total = totalForFilter();
+  const totalPages = pageCount();
+  const start = total === 0 ? 0 : currentOffset() + 1;
+  const end = Math.min(total, currentOffset() + state.items.length);
+  const text = total === 0
+    ? "Страница 1 из 1 · 0 пар"
+    : `Страница ${state.page} из ${totalPages} · пары ${start}-${end} из ${total}`;
+
+  for (const id of ["pageIndicator", "pageIndicatorBottom"]) {
+    document.getElementById(id).textContent = text;
+  }
+  for (const id of ["pagePrevBtn", "pagePrevBtnBottom"]) {
+    document.getElementById(id).disabled = state.page <= 1;
+  }
+  for (const id of ["pageNextBtn", "pageNextBtnBottom"]) {
+    document.getElementById(id).disabled = state.page >= totalPages;
+  }
+}
+
+function renderLog(message) {
+  document.getElementById("duplicatesLog").textContent = message;
+}
+
+function renderFeed() {
+  const node = document.getElementById("pairFeed");
   if (!state.items.length) {
-    list.innerHTML = "<p>Для текущего фильтра пары не найдены.</p>";
-    counter.textContent = "0 / 0";
+    node.innerHTML = '<div class="empty-state">На этой странице нет пар под выбранный фильтр.</div>';
+    renderPager();
     return;
   }
-  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
-  const start = Math.max(0, state.activeIndex - state.windowRadius);
-  const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
-  list.innerHTML = state.items
-    .slice(start, end)
-    .map((item, offset) => {
-      const index = start + offset;
-      const active = index === state.activeIndex ? "active" : "";
+
+  if (!state.activeId || !state.items.some((item) => item.id === state.activeId)) {
+    state.activeId = state.items[0].id;
+  }
+
+  node.innerHTML = state.items
+    .map((item) => {
+      const isActive = item.id === state.activeId ? " active" : "";
+      const aiReason = item.ai_reason || "AI еще не дал пояснение.";
+      const manualLabel = item.manual_label || "нет";
+      const rawResponse = item.ai_raw_response || "пусто";
       return `
-        <article class="pair-item ${active}" data-index="${index}">
-          <strong>#${item.id}</strong>
-          <div>${item.left_root_name} <-> ${item.right_root_name}</div>
-          <div>score: ${item.candidate_score}</div>
-          <span class="tag">${item.effective_label}</span>
+        <article class="pair-card${isActive}" data-card-id="${item.id}">
+          <div class="pair-header">
+            <div class="pair-header__meta">
+              <div class="badge-row">
+                <span class="fact-pill">#${item.id}</span>
+                <span class="${statusClass(item.effective_label)}">${escapeHtml(item.effective_label)}</span>
+                <span class="fact-pill">score ${escapeHtml(item.candidate_score)}</span>
+              </div>
+              <div>Источники: <strong>${escapeHtml(item.left_root_name)}</strong> и <strong>${escapeHtml(item.right_root_name)}</strong></div>
+            </div>
+            <div class="pair-actions">
+              <button class="primary" data-action-id="${item.id}" data-label="duplicate">Duplicate</button>
+              <button data-action-id="${item.id}" data-label="distinct">Distinct</button>
+              <button data-action-id="${item.id}" data-label="blocked">Blocked</button>
+              <button data-action-id="${item.id}" data-label="clear">Clear</button>
+            </div>
+          </div>
+
+          <div class="pair-compare">
+            <article class="image-pane">
+              <img src="${item.left_media_url}" alt="left">
+              <div class="image-caption">
+                <strong>${escapeHtml(item.left_file_name)}</strong>
+                <div>${escapeHtml(item.left_root_name)} · ${item.left_width}x${item.left_height} · ${formatSize(item.left_size_bytes)}</div>
+                <div>${escapeHtml(item.left_path)}</div>
+              </div>
+            </article>
+
+            <article class="image-pane">
+              <img src="${item.right_media_url}" alt="right">
+              <div class="image-caption">
+                <strong>${escapeHtml(item.right_file_name)}</strong>
+                <div>${escapeHtml(item.right_root_name)} · ${item.right_width}x${item.right_height} · ${formatSize(item.right_size_bytes)}</div>
+                <div>${escapeHtml(item.right_path)}</div>
+              </div>
+            </article>
+          </div>
+
+          <div class="pair-footer">
+            <div class="metric-grid">
+              ${[
+                ["Exact hash", item.exact_hash_match],
+                ["pHash", item.phash_distance],
+                ["dHash", item.dhash_distance],
+                ["aHash", item.ahash_distance],
+                ["Center pHash", item.center_phash_distance],
+                ["Center dHash", item.center_dhash_distance],
+                ["Size ratio", item.size_ratio],
+                ["AI confidence", item.ai_confidence ?? "—"],
+              ]
+                .map(
+                  ([label, value]) => `
+                    <div class="metric-card">
+                      <div class="metric-card__label">${escapeHtml(label)}</div>
+                      <div>${escapeHtml(value)}</div>
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>
+
+            <div class="pair-reason">
+              <div><strong>Ручная метка:</strong> ${escapeHtml(manualLabel)}</div>
+              <div><strong>Пояснение AI:</strong> ${escapeHtml(aiReason)}</div>
+              <details class="details-box">
+                <summary>Сырой ответ модели</summary>
+                <pre class="log-box">${escapeHtml(rawResponse)}</pre>
+              </details>
+            </div>
+          </div>
         </article>
       `;
     })
     .join("");
-  list.querySelectorAll(".pair-item").forEach((node) => {
-    node.addEventListener("click", () => {
-      state.activeIndex = Number(node.dataset.index);
-      renderCurrent();
+
+  node.querySelectorAll("[data-card-id]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("[data-action-id]")) return;
+      state.activeId = Number(card.dataset.cardId);
+      renderFeed();
     });
   });
-}
 
-function renderCurrent() {
-  renderList();
-  const item = currentItem();
-  const title = document.getElementById("pairTitle");
-  if (!item) {
-    title.textContent = "Пара не выбрана";
-    document.getElementById("leftImage").removeAttribute("src");
-    document.getElementById("rightImage").removeAttribute("src");
-    document.getElementById("metricsBox").innerHTML = "";
-    document.getElementById("reasonBox").textContent = "";
-    return;
-  }
-  title.textContent = `#${item.id} · ${item.effective_label}`;
-  document.getElementById("leftImage").src = item.left_media_url;
-  document.getElementById("rightImage").src = item.right_media_url;
-  document.getElementById("leftMeta").innerHTML = `
-    <strong>${item.left_file_name}</strong><br>
-    ${item.left_root_name} · ${item.left_width}x${item.left_height} · ${formatSize(item.left_size_bytes)}<br>
-    ${item.left_path}
-  `;
-  document.getElementById("rightMeta").innerHTML = `
-    <strong>${item.right_file_name}</strong><br>
-    ${item.right_root_name} · ${item.right_width}x${item.right_height} · ${formatSize(item.right_size_bytes)}<br>
-    ${item.right_path}
-  `;
-  document.getElementById("metricsBox").innerHTML = [
-    ["Score", item.candidate_score],
-    ["Exact", item.exact_hash_match],
-    ["pHash", item.phash_distance],
-    ["dHash", item.dhash_distance],
-    ["aHash", item.ahash_distance],
-    ["Center pHash", item.center_phash_distance],
-    ["Center dHash", item.center_dhash_distance],
-    ["Size ratio", item.size_ratio],
-  ]
-    .map(([label, value]) => `<div class="metric"><strong>${label}</strong><div>${value}</div></div>`)
-    .join("");
-  const reason = {
-    ai_label: item.ai_label,
-    ai_confidence: item.ai_confidence,
-    ai_reason: item.ai_reason,
-    manual_label: item.manual_label,
-    raw: item.ai_raw_response,
-  };
-  document.getElementById("reasonBox").textContent = JSON.stringify(reason, null, 2);
+  node.querySelectorAll("[data-action-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await labelCandidate(Number(button.dataset.actionId), button.dataset.label);
+    });
+  });
+
+  renderPager();
 }
 
 async function loadStats() {
   const payload = await api("/api/dashboard");
-  renderSummary(payload.stats);
+  state.counts = payload.stats.candidates || {};
+  renderSummary();
 }
 
-async function loadList(reset = false) {
-  if (reset) {
-    state.activeIndex = 0;
-  }
-  const payload = await api(`/api/duplicates?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
+async function loadPage() {
+  const payload = await api(
+    `/api/duplicates?filter=${encodeURIComponent(state.filter)}&limit=${state.pageSize}&offset=${currentOffset()}`,
+  );
   state.items = payload.items;
-  renderCurrent();
+  if (!state.items.length && state.page > 1) {
+    state.page -= 1;
+    return loadPage();
+  }
+  renderFeed();
 }
 
-async function labelCurrent(label) {
-  const item = currentItem();
-  if (!item) return;
-  await api(`/api/duplicates/${item.id}/label`, {
+async function labelCandidate(id, label) {
+  await api(`/api/duplicates/${id}/label`, {
     method: "POST",
     body: JSON.stringify({ label }),
   });
-  await loadList(false);
+  state.activeId = id;
   await loadStats();
-}
-
-function move(delta) {
-  if (!state.items.length) return;
-  state.activeIndex = Math.max(0, Math.min(state.items.length - 1, state.activeIndex + delta));
-  renderCurrent();
-}
-
-async function showDeletePlan() {
-  const payload = await api("/api/duplicates/apply-plan", { method: "POST", body: "{}" });
-  document.getElementById("deletePlanBox").textContent = JSON.stringify(payload, null, 2);
+  await loadPage();
 }
 
 async function runVerify(force) {
@@ -165,31 +242,55 @@ async function runVerify(force) {
     method: "POST",
     body: JSON.stringify({ force }),
   });
-  document.getElementById("deletePlanBox").textContent = force
-    ? "AI-проверка всех пар запущена в фоне."
-    : "AI-проверка необработанных пар запущена в фоне.";
+  renderLog(
+    force
+      ? "AI-проверка всех пар запущена в фоне."
+      : "AI-проверка только необработанных пар запущена в фоне.",
+  );
+}
+
+async function showDeletePlan() {
+  const payload = await api("/api/duplicates/apply-plan", { method: "POST", body: "{}" });
+  renderLog(JSON.stringify(payload, null, 2));
 }
 
 async function applyDeletePlan() {
   const accepted = confirm("Применить удаление всех пар, которые помечены как duplicate?");
   if (!accepted) return;
   await api("/api/duplicates/apply", { method: "POST", body: "{}" });
-  document.getElementById("deletePlanBox").textContent = "Применение плана удаления запущено.";
+  renderLog("Применение плана удаления запущено.");
+}
+
+async function refreshAll() {
+  await loadStats();
+  const totalPages = pageCount();
+  if (state.page > totalPages) {
+    state.page = totalPages;
+  }
+  await loadPage();
+}
+
+function changePage(delta) {
+  const nextPage = state.page + delta;
+  if (nextPage < 1 || nextPage > pageCount()) return;
+  state.page = nextPage;
+  loadPage();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 document.getElementById("filterSelect").addEventListener("change", async (event) => {
   state.filter = event.target.value;
-  await loadList(true);
+  state.page = 1;
+  await refreshAll();
 });
 
-document.querySelectorAll("[data-label]").forEach((button) => {
-  button.addEventListener("click", async () => {
-    await labelCurrent(button.dataset.label);
-  });
-});
+for (const id of ["pagePrevBtn", "pagePrevBtnBottom"]) {
+  document.getElementById(id).addEventListener("click", () => changePage(-1));
+}
+for (const id of ["pageNextBtn", "pageNextBtnBottom"]) {
+  document.getElementById(id).addEventListener("click", () => changePage(1));
+}
 
-document.getElementById("prevBtn").addEventListener("click", () => move(-1));
-document.getElementById("nextBtn").addEventListener("click", () => move(1));
 document.getElementById("verifyPendingBtn").addEventListener("click", () => runVerify(false));
 document.getElementById("verifyForceBtn").addEventListener("click", () => runVerify(true));
 document.getElementById("showDeletePlanBtn").addEventListener("click", showDeletePlan);
@@ -197,13 +298,11 @@ document.getElementById("applyDeletePlanBtn").addEventListener("click", applyDel
 
 window.addEventListener("keydown", async (event) => {
   if (event.target.matches("input, textarea, select")) return;
-  if (event.key === "ArrowLeft") move(-1);
-  if (event.key === "ArrowRight") move(1);
-  if (event.key.toLowerCase() === "d") await labelCurrent("duplicate");
-  if (event.key.toLowerCase() === "n") await labelCurrent("distinct");
-  if (event.key.toLowerCase() === "b") await labelCurrent("blocked");
-  if (event.key.toLowerCase() === "c") await labelCurrent("clear");
+  if (!state.activeId) return;
+  if (event.key.toLowerCase() === "d") await labelCandidate(state.activeId, "duplicate");
+  if (event.key.toLowerCase() === "n") await labelCandidate(state.activeId, "distinct");
+  if (event.key.toLowerCase() === "b") await labelCandidate(state.activeId, "blocked");
+  if (event.key.toLowerCase() === "c") await labelCandidate(state.activeId, "clear");
 });
 
-loadStats();
-loadList(true);
+refreshAll();

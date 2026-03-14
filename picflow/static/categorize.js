@@ -10,13 +10,13 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-const state = {
-  categories: [],
-  filter: "all",
-  items: [],
-  activeIndex: 0,
-  windowRadius: 25,
-};
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 function formatSize(bytes) {
   if (!bytes) return "0 B";
@@ -30,6 +30,14 @@ function formatSize(bytes) {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
+const state = {
+  categories: [],
+  filter: "all",
+  items: [],
+  activeIndex: 0,
+  windowRadius: 24,
+};
+
 function currentItem() {
   return state.items[state.activeIndex];
 }
@@ -38,17 +46,17 @@ function renderSummary(stats) {
   const category = stats.category || {};
   const ready = (category.total || 0) - (category.pending || 0);
   document.getElementById("categorySummary").innerHTML = [
-    `<div><strong>Всего approved:</strong> ${category.total || 0}</div>`,
-    `<div><strong>Размечено:</strong> ${ready || 0}</div>`,
-    `<div><strong>Без категории:</strong> ${category.pending || 0}</div>`,
-    `<div><strong>Blocked:</strong> ${category.blocked || 0}</div>`,
+    `<div><strong>Всего approved</strong><span>${category.total || 0}</span></div>`,
+    `<div><strong>Размечено</strong><span>${ready || 0}</span></div>`,
+    `<div><strong>Без категории</strong><span>${category.pending || 0}</span></div>`,
+    `<div><strong>Blocked</strong><span>${category.blocked || 0}</span></div>`,
   ].join("");
 }
 
 function renderButtons() {
   const node = document.getElementById("categoryButtons");
   node.innerHTML = [
-    ...state.categories.map((category, index) => `<button data-category="${category}">${index + 1}: ${category}</button>`),
+    ...state.categories.map((category, index) => `<button data-category="${category}">${index + 1}: ${escapeHtml(category)}</button>`),
     '<button data-category="blocked">B: blocked</button>',
     '<button data-category="clear">C: clear</button>',
   ].join("");
@@ -59,41 +67,42 @@ function renderButtons() {
   });
 }
 
-function renderList() {
-  const list = document.getElementById("categoryList");
-  const counter = document.getElementById("categoryCounter");
+function renderQueue() {
+  const node = document.getElementById("categoryList");
   if (!state.items.length) {
-    list.innerHTML = "<p>В approved папке нет фото под текущий фильтр.</p>";
-    counter.textContent = "0 / 0";
+    node.innerHTML = '<div class="empty-state">В approved пока нет картинок под этот фильтр.</div>';
+    document.getElementById("categoryCounter").textContent = "0 / 0";
     return;
   }
-  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+
+  document.getElementById("categoryCounter").textContent = `${state.activeIndex + 1} / ${state.items.length}`;
   const start = Math.max(0, state.activeIndex - state.windowRadius);
   const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
-  list.innerHTML = state.items
+  node.innerHTML = state.items
     .slice(start, end)
     .map((item, offset) => {
       const index = start + offset;
-      const active = index === state.activeIndex ? "active" : "";
+      const active = index === state.activeIndex ? " active" : "";
       return `
-        <article class="pair-item ${active}" data-index="${index}">
-          <strong>${item.file_name}</strong>
-          <div>${item.root_name}</div>
-          <span class="tag">${item.effective_label}</span>
+        <article class="queue-item${active}" data-index="${index}">
+          <strong>${escapeHtml(item.file_name)}</strong>
+          <div>${escapeHtml(item.root_name)}</div>
+          <span class="queue-item__tag">${escapeHtml(item.effective_label)}</span>
         </article>
       `;
     })
     .join("");
-  list.querySelectorAll(".pair-item").forEach((node) => {
-    node.addEventListener("click", () => {
-      state.activeIndex = Number(node.dataset.index);
+
+  node.querySelectorAll("[data-index]").forEach((item) => {
+    item.addEventListener("click", () => {
+      state.activeIndex = Number(item.dataset.index);
       renderCurrent();
     });
   });
 }
 
 function renderCurrent() {
-  renderList();
+  renderQueue();
   const item = currentItem();
   if (!item) {
     document.getElementById("categoryTitle").textContent = "Нет фото";
@@ -101,12 +110,13 @@ function renderCurrent() {
     document.getElementById("categoryMeta").textContent = "";
     return;
   }
+
   document.getElementById("categoryTitle").textContent = `${item.file_name} · ${item.effective_label}`;
   document.getElementById("categoryImage").src = item.media_url;
   document.getElementById("categoryMeta").innerHTML = `
-    <strong>${item.file_name}</strong><br>
+    <strong>${escapeHtml(item.file_name)}</strong><br>
     ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
-    ${item.path}
+    ${escapeHtml(item.path)}
   `;
 }
 
@@ -116,17 +126,22 @@ async function loadStats() {
 }
 
 async function loadList(reset = false) {
-  if (reset) {
-    state.activeIndex = 0;
-  }
   const payload = await api(`/api/categories?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
   state.items = payload.items;
   state.categories = payload.categories;
+  if (reset) {
+    state.activeIndex = 0;
+  }
+  if (state.activeIndex >= state.items.length) {
+    state.activeIndex = Math.max(0, state.items.length - 1);
+  }
+
   const filter = document.getElementById("categoryFilter");
   filter.innerHTML = ["all", "pending", "blocked", ...state.categories]
-    .map((value) => `<option value="${value}">${value}</option>`)
+    .map((value) => `<option value="${value}">${escapeHtml(value)}</option>`)
     .join("");
   filter.value = state.filter;
+
   renderButtons();
   renderCurrent();
 }
@@ -157,7 +172,7 @@ async function runAi(force) {
   });
   document.getElementById("categoryPlanBox").textContent = force
     ? "AI-категоризация всех approved фото запущена."
-    : "AI-категоризация только необработанных approved фото запущена.";
+    : "AI-категоризация необработанных approved фото запущена.";
 }
 
 async function showPlan() {
