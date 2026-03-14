@@ -190,7 +190,7 @@ def ensure_dotenv_loaded() -> None:
     for dotenv_path in DOTENV_PATHS:
         if not dotenv_path.exists():
             continue
-        for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        for raw_line in dotenv_path.read_text(encoding="utf-8-sig").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
@@ -257,7 +257,7 @@ def resolve_config_path(path: Path | str | None = None) -> Path:
 def load_or_create_config(path: Path | str | None = None) -> AppConfig:
     target = resolve_config_path(path)
     if target.exists():
-        payload = json.loads(target.read_text(encoding="utf-8"))
+        payload = json.loads(target.read_text(encoding="utf-8-sig"))
         config = apply_env_overrides(AppConfig.from_dict(payload))
     else:
         config = apply_env_overrides(AppConfig())

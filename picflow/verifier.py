@@ -145,7 +145,7 @@ def resolve_api_keys(config: AppConfig) -> list[str]:
         return api_keys
     if DEFAULT_CONFIG_PATH.exists():
         try:
-            payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+            payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8-sig"))
         except Exception:  # noqa: BLE001
             return []
         fallback = [key for key in payload.get("verification", {}).get("api_keys", []) if key]
