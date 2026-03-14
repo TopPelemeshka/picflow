@@ -11,57 +11,73 @@
       <section class="hero">
         <div>
           <p class="eyebrow">PicFlow</p>
-          <h1>Отбор картинок без ручного хаоса</h1>
+          <h1>Поток отбора картинок без ручного хаоса</h1>
           <p class="lead">
-            Первый этап уже рабочий: сканирование библиотеки, поиск кандидатов в дубли,
-            AI-проверка пар и ручной ревью-интерфейс.
+            Дедупликация, быстрый good/bad отбор, категоризация и экспорт собраны
+            в одном локальном веб-интерфейсе.
           </p>
+          <div id="configStrip" class="config-strip"></div>
         </div>
         <div class="hero-actions">
           <button id="scanBtn" class="primary">1. Сканировать библиотеку</button>
           <button id="candidateBtn">2. Построить кандидатов</button>
-          <button id="verifyBtn">3. Запустить AI-проверку</button>
-          <a class="link-button" href="/duplicates">Открыть ревью дублей</a>
-          <a class="link-button" href="/selection">Открыть good/bad отбор</a>
-          <a class="link-button" href="/categorize">Открыть категоризацию</a>
+          <button id="verifyBtn">3. AI для необработанных пар</button>
+          <button id="verifyForceBtn">4. AI для всех пар</button>
+          <a class="link-button" href="/duplicates">Ревью дублей</a>
+          <a class="link-button" href="/selection">Good / Bad</a>
+          <a class="link-button" href="/categorize">Категоризация</a>
         </div>
       </section>
 
       <section class="cards" id="statsGrid"></section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>План удаления</h2>
-          <div class="toolbar">
-            <button id="planBtn">Показать план</button>
-            <button id="applyBtn" class="danger">Подтвердить удаление дублей</button>
+      <section class="panel two-column">
+        <article>
+          <div class="panel-head">
+            <h2>План удаления дублей</h2>
+            <div class="toolbar">
+              <button id="planBtn">Показать план</button>
+              <button id="applyBtn" class="danger">Применить план</button>
+            </div>
           </div>
-        </div>
-        <pre id="planBox" class="log-box">План еще не запрошен.</pre>
+          <pre id="planBox" class="log-box">План еще не запрошен.</pre>
+        </article>
+        <article>
+          <div class="panel-head">
+            <h2>Текущая конфигурация</h2>
+            <button id="refreshBtn">Обновить</button>
+          </div>
+          <div id="configBox" class="config-box"></div>
+        </article>
       </section>
 
       <section class="panel">
         <div class="panel-head">
           <h2>Фоновые задачи</h2>
-          <button id="refreshBtn">Обновить</button>
         </div>
         <div id="jobsBox" class="job-list"></div>
       </section>
 
-      <section class="panel roadmap">
-        <h2>Следующие этапы</h2>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Поток работы</h2>
+        </div>
         <div class="roadmap-grid">
           <article>
-            <h3>Этап 2</h3>
-            <p>Интерфейс быстрого лайка/дизлайка с горячими клавишами и разбором просмотренных файлов по папкам good/bad уже добавлен.</p>
+            <h3>1. Дедупликация</h3>
+            <p>Сканируй библиотеку, построй кандидатов, запусти AI и проверь спорные пары на странице дублей.</p>
           </article>
           <article>
-            <h3>Этап 3</h3>
-            <p>Ручная категоризация и экспорт уже добавлены. Следом можно расширять AI-категоризацию и экран ревью.</p>
+            <h3>2. Good / Bad</h3>
+            <p>Оцени входящие фото горячими клавишами и разнеси просмотренный префикс в approved и rejected.</p>
+          </article>
+          <article>
+            <h3>3. Категоризация</h3>
+            <p>Разметь approved фото вручную или через AI, затем отправь готовые файлы в export.</p>
           </article>
         </div>
       </section>
     </main>
     <script src="/static/dashboard.js"></script>
   </body>
-  </html>
+</html>

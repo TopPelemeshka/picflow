@@ -22,29 +22,51 @@ function statCard(title, value, detail = "") {
 
 function renderStats(payload) {
   const stats = payload.stats;
-  const roles = stats.images_by_role;
+  const roles = stats.images_by_role || {};
+  const selection = stats.selection || {};
+  const category = stats.category || {};
+  const categoryReady = (category.total || 0) - (category.pending || 0);
   const cards = [
-    statCard("Всего фото", stats.images_total),
-    statCard("В эталоне", roles.reference || 0),
-    statCard("Новые входящие", roles.incoming || 0),
-    statCard("Одобренные без категории", roles.approved || 0),
-    statCard("Неинтересные", roles.rejected || 0),
+    statCard("Всего фото", stats.images_total || 0),
+    statCard("Эталон", roles.reference || 0),
+    statCard("Входящие", roles.incoming || 0),
+    statCard("Approved", roles.approved || 0),
+    statCard("Rejected", roles.rejected || 0),
     statCard("Кандидаты в дубли", stats.candidates.total || 0),
-    statCard("AI/ручные дубли", stats.candidates.duplicate || 0),
-    statCard("Блокировки", stats.candidates.blocked || 0),
-    statCard("Good", stats.selection.good || 0),
-    statCard("Bad", stats.selection.bad || 0),
-    statCard("Без отметки", stats.selection.pending || 0),
-    statCard("Категоризировано", stats.category.total - (stats.category.pending || 0) || 0),
-    statCard("К экспорту", stats.category.pending || 0),
+    statCard("Помечены как дубли", stats.candidates.duplicate || 0),
+    statCard("Good", selection.good || 0),
+    statCard("Bad", selection.bad || 0),
+    statCard("Без оценки", selection.pending || 0),
+    statCard("Категории готовы", categoryReady || 0),
+    statCard("Ждут категории", category.pending || 0),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");
+}
+
+function renderConfig(config) {
+  const rows = [
+    ["Конфиг", config.config_path],
+    ["Библиотека", config.library_root],
+    ["Эталон", config.reference_dir],
+    ["Approved", config.approved_dir],
+    ["Rejected", config.rejected_dir],
+    ["Export", config.export_dir],
+    ["Модель", config.model],
+    ["Прокси", config.proxy_url || "не задан"],
+  ];
+  document.getElementById("configStrip").innerHTML = rows
+    .slice(0, 4)
+    .map(([label, value]) => `<span class="pill"><strong>${label}:</strong> ${value}</span>`)
+    .join("");
+  document.getElementById("configBox").innerHTML = rows
+    .map(([label, value]) => `<div class="config-row"><strong>${label}</strong><span>${value}</span></div>`)
+    .join("");
 }
 
 function renderJobs(jobs) {
   const node = document.getElementById("jobsBox");
   if (!jobs.length) {
-    node.innerHTML = "<p>Задач пока нет.</p>";
+    node.innerHTML = "<p>Фоновых задач пока нет.</p>";
     return;
   }
   node.innerHTML = jobs
@@ -69,6 +91,7 @@ function renderJobs(jobs) {
 async function refresh() {
   const payload = await api("/api/dashboard");
   renderStats(payload);
+  renderConfig(payload.config);
   renderJobs(payload.jobs);
 }
 
@@ -79,6 +102,7 @@ async function start(path, body = {}) {
     return result;
   } catch (error) {
     alert(error.message);
+    throw error;
   }
 }
 
@@ -91,9 +115,10 @@ async function showPlan() {
   }
 }
 
-document.getElementById("scanBtn").addEventListener("click", () => start("/api/scan", {}));
+document.getElementById("scanBtn").addEventListener("click", () => start("/api/scan", { create_runtime_dirs: true }));
 document.getElementById("candidateBtn").addEventListener("click", () => start("/api/candidates", {}));
-document.getElementById("verifyBtn").addEventListener("click", () => start("/api/verify", {}));
+document.getElementById("verifyBtn").addEventListener("click", () => start("/api/verify", { force: false }));
+document.getElementById("verifyForceBtn").addEventListener("click", () => start("/api/verify", { force: true }));
 document.getElementById("applyBtn").addEventListener("click", async () => {
   const accepted = confirm("Подтвердить применение плана удаления дублей?");
   if (!accepted) return;

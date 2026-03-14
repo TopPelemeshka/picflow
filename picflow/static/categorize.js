@@ -15,6 +15,7 @@ const state = {
   filter: "all",
   items: [],
   activeIndex: 0,
+  windowRadius: 25,
 };
 
 function formatSize(bytes) {
@@ -33,6 +34,17 @@ function currentItem() {
   return state.items[state.activeIndex];
 }
 
+function renderSummary(stats) {
+  const category = stats.category || {};
+  const ready = (category.total || 0) - (category.pending || 0);
+  document.getElementById("categorySummary").innerHTML = [
+    `<div><strong>Всего approved:</strong> ${category.total || 0}</div>`,
+    `<div><strong>Размечено:</strong> ${ready || 0}</div>`,
+    `<div><strong>Без категории:</strong> ${category.pending || 0}</div>`,
+    `<div><strong>Blocked:</strong> ${category.blocked || 0}</div>`,
+  ].join("");
+}
+
 function renderButtons() {
   const node = document.getElementById("categoryButtons");
   node.innerHTML = [
@@ -49,12 +61,19 @@ function renderButtons() {
 
 function renderList() {
   const list = document.getElementById("categoryList");
+  const counter = document.getElementById("categoryCounter");
   if (!state.items.length) {
-    list.innerHTML = "<p>В approved_unsorted пока нет картинок под текущий фильтр.</p>";
+    list.innerHTML = "<p>В approved папке нет фото под текущий фильтр.</p>";
+    counter.textContent = "0 / 0";
     return;
   }
+  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+  const start = Math.max(0, state.activeIndex - state.windowRadius);
+  const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
   list.innerHTML = state.items
-    .map((item, index) => {
+    .slice(start, end)
+    .map((item, offset) => {
+      const index = start + offset;
       const active = index === state.activeIndex ? "active" : "";
       return `
         <article class="pair-item ${active}" data-index="${index}">
@@ -82,30 +101,32 @@ function renderCurrent() {
     document.getElementById("categoryMeta").textContent = "";
     return;
   }
-  document.getElementById("categoryTitle").textContent = `${item.file_name} • ${item.effective_label}`;
+  document.getElementById("categoryTitle").textContent = `${item.file_name} · ${item.effective_label}`;
   document.getElementById("categoryImage").src = item.media_url;
   document.getElementById("categoryMeta").innerHTML = `
     <strong>${item.file_name}</strong><br>
-    ${item.width}×${item.height} • ${formatSize(item.size_bytes)}<br>
+    ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
     ${item.path}
   `;
+}
+
+async function loadStats() {
+  const payload = await api("/api/dashboard");
+  renderSummary(payload.stats);
 }
 
 async function loadList(reset = false) {
   if (reset) {
     state.activeIndex = 0;
   }
-  const payload = await api(`/api/categories?filter=${encodeURIComponent(state.filter)}&limit=200&offset=0`);
+  const payload = await api(`/api/categories?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
   state.items = payload.items;
   state.categories = payload.categories;
   const filter = document.getElementById("categoryFilter");
-  if (!filter.dataset.ready) {
-    filter.innerHTML = ['all', 'pending', 'blocked', ...state.categories]
-      .map((value) => `<option value="${value}">${value}</option>`)
-      .join("");
-    filter.dataset.ready = "1";
-    filter.value = state.filter;
-  }
+  filter.innerHTML = ["all", "pending", "blocked", ...state.categories]
+    .map((value) => `<option value="${value}">${value}</option>`)
+    .join("");
+  filter.value = state.filter;
   renderButtons();
   renderCurrent();
 }
@@ -120,6 +141,7 @@ async function labelCurrent(label) {
   item.category_label = label === "clear" ? null : label;
   item.effective_label = item.category_label || "pending";
   renderCurrent();
+  await loadStats();
 }
 
 function move(delta) {
@@ -128,12 +150,14 @@ function move(delta) {
   renderCurrent();
 }
 
-async function runAi() {
+async function runAi(force) {
   await api("/api/categories/run-ai", {
     method: "POST",
-    body: JSON.stringify({ force: false }),
+    body: JSON.stringify({ force }),
   });
-  document.getElementById("categoryPlanBox").textContent = "AI-категоризация запущена в фоне.";
+  document.getElementById("categoryPlanBox").textContent = force
+    ? "AI-категоризация всех approved фото запущена."
+    : "AI-категоризация только необработанных approved фото запущена.";
 }
 
 async function showPlan() {
@@ -142,10 +166,10 @@ async function showPlan() {
 }
 
 async function applyExport() {
-  const accepted = confirm("Экспортировать все картинки из approved_unsorted, у которых уже есть категория?");
+  const accepted = confirm("Экспортировать все approved фото, у которых уже задана категория?");
   if (!accepted) return;
   await api("/api/categories/export", { method: "POST", body: "{}" });
-  document.getElementById("categoryPlanBox").textContent = "Экспорт запущен в фоне.";
+  document.getElementById("categoryPlanBox").textContent = "Экспорт размеченных фото запущен.";
 }
 
 document.getElementById("categoryFilter").addEventListener("change", async (event) => {
@@ -154,7 +178,8 @@ document.getElementById("categoryFilter").addEventListener("change", async (even
 });
 document.getElementById("categoryPrevBtn").addEventListener("click", () => move(-1));
 document.getElementById("categoryNextBtn").addEventListener("click", () => move(1));
-document.getElementById("categoryAiBtn").addEventListener("click", runAi);
+document.getElementById("categoryAiBtn").addEventListener("click", () => runAi(false));
+document.getElementById("categoryAiForceBtn").addEventListener("click", () => runAi(true));
 document.getElementById("categoryPlanBtn").addEventListener("click", showPlan);
 document.getElementById("categoryApplyBtn").addEventListener("click", applyExport);
 
@@ -164,10 +189,13 @@ window.addEventListener("keydown", async (event) => {
   if (event.key === "ArrowRight") move(1);
   if (["1", "2", "3", "4", "5"].includes(event.key)) {
     const index = Number(event.key) - 1;
-    if (state.categories[index]) await labelCurrent(state.categories[index]);
+    if (state.categories[index]) {
+      await labelCurrent(state.categories[index]);
+    }
   }
   if (event.key.toLowerCase() === "b") await labelCurrent("blocked");
   if (event.key.toLowerCase() === "c") await labelCurrent("clear");
 });
 
+loadStats();
 loadList(true);

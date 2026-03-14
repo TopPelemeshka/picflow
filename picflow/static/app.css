@@ -134,6 +134,23 @@ kbd {
   gap: 16px;
 }
 
+.config-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.pill {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border);
+}
+
 .stat-card {
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--border);
@@ -151,6 +168,32 @@ kbd {
 .panel {
   margin-top: 20px;
   padding: 22px;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.config-box,
+.summary-box {
+  display: grid;
+  gap: 10px;
+}
+
+.config-row,
+.summary-box > div,
+.counter-box {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--border);
+}
+
+.config-row {
+  display: grid;
+  gap: 6px;
 }
 
 .panel-head,
@@ -206,11 +249,23 @@ kbd {
   gap: 20px;
   min-height: 100vh;
   padding: 20px;
+  align-items: start;
 }
 
 .sidebar,
 .workspace {
   padding: 20px;
+}
+
+.sidebar {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
+.workspace {
+  min-width: 0;
 }
 
 .back-link {
@@ -237,6 +292,14 @@ select {
 .pair-list {
   display: grid;
   gap: 10px;
+}
+
+.stack-toolbar {
+  align-items: stretch;
+}
+
+.stack-toolbar button {
+  width: 100%;
 }
 
 .pair-item {
@@ -299,6 +362,12 @@ select {
   margin-top: 18px;
 }
 
+.counter-box {
+  margin: 16px 0;
+  font-weight: 700;
+  text-align: center;
+}
+
 .metric {
   padding: 12px;
   border-radius: 14px;
@@ -306,10 +375,24 @@ select {
   border: 1px solid var(--border);
 }
 
+.detail-panel {
+  margin-top: 18px;
+}
+
+.secondary-log {
+  margin-top: 14px;
+}
+
 @media (max-width: 980px) {
   .hero,
   .review-shell,
-  .viewer {
+  .viewer,
+  .two-column {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    max-height: none;
   }
 }

@@ -13,8 +13,8 @@ async function api(path, options = {}) {
 const state = {
   filter: "needs-review",
   items: [],
-  offset: 0,
   activeIndex: 0,
+  windowRadius: 20,
 };
 
 function formatSize(bytes) {
@@ -29,19 +29,40 @@ function formatSize(bytes) {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
+function currentItem() {
+  return state.items[state.activeIndex];
+}
+
+function renderSummary(stats) {
+  const candidates = stats.candidates || {};
+  document.getElementById("duplicatesSummary").innerHTML = [
+    `<div><strong>Всего пар:</strong> ${candidates.total || 0}</div>`,
+    `<div><strong>Дубликаты:</strong> ${candidates.duplicate || 0}</div>`,
+    `<div><strong>Blocked:</strong> ${candidates.blocked || 0}</div>`,
+    `<div><strong>Distinct:</strong> ${candidates.distinct || 0}</div>`,
+  ].join("");
+}
+
 function renderList() {
   const list = document.getElementById("pairList");
+  const counter = document.getElementById("pairCounter");
   if (!state.items.length) {
-    list.innerHTML = "<p>Для текущего фильтра пар пока нет.</p>";
+    list.innerHTML = "<p>Для текущего фильтра пары не найдены.</p>";
+    counter.textContent = "0 / 0";
     return;
   }
+  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+  const start = Math.max(0, state.activeIndex - state.windowRadius);
+  const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
   list.innerHTML = state.items
-    .map((item, index) => {
+    .slice(start, end)
+    .map((item, offset) => {
+      const index = start + offset;
       const active = index === state.activeIndex ? "active" : "";
       return `
         <article class="pair-item ${active}" data-index="${index}">
           <strong>#${item.id}</strong>
-          <div>${item.left_root_name} ↔ ${item.right_root_name}</div>
+          <div>${item.left_root_name} <-> ${item.right_root_name}</div>
           <div>score: ${item.candidate_score}</div>
           <span class="tag">${item.effective_label}</span>
         </article>
@@ -58,7 +79,7 @@ function renderList() {
 
 function renderCurrent() {
   renderList();
-  const item = state.items[state.activeIndex];
+  const item = currentItem();
   const title = document.getElementById("pairTitle");
   if (!item) {
     title.textContent = "Пара не выбрана";
@@ -68,17 +89,17 @@ function renderCurrent() {
     document.getElementById("reasonBox").textContent = "";
     return;
   }
-  title.textContent = `#${item.id} • ${item.effective_label}`;
+  title.textContent = `#${item.id} · ${item.effective_label}`;
   document.getElementById("leftImage").src = item.left_media_url;
   document.getElementById("rightImage").src = item.right_media_url;
   document.getElementById("leftMeta").innerHTML = `
     <strong>${item.left_file_name}</strong><br>
-    ${item.left_root_name} • ${item.left_width}×${item.left_height} • ${formatSize(item.left_size_bytes)}<br>
+    ${item.left_root_name} · ${item.left_width}x${item.left_height} · ${formatSize(item.left_size_bytes)}<br>
     ${item.left_path}
   `;
   document.getElementById("rightMeta").innerHTML = `
     <strong>${item.right_file_name}</strong><br>
-    ${item.right_root_name} • ${item.right_width}×${item.right_height} • ${formatSize(item.right_size_bytes)}<br>
+    ${item.right_root_name} · ${item.right_width}x${item.right_height} · ${formatSize(item.right_size_bytes)}<br>
     ${item.right_path}
   `;
   document.getElementById("metricsBox").innerHTML = [
@@ -103,30 +124,57 @@ function renderCurrent() {
   document.getElementById("reasonBox").textContent = JSON.stringify(reason, null, 2);
 }
 
+async function loadStats() {
+  const payload = await api("/api/dashboard");
+  renderSummary(payload.stats);
+}
+
 async function loadList(reset = false) {
   if (reset) {
-    state.offset = 0;
     state.activeIndex = 0;
   }
-  const payload = await api(`/api/duplicates?filter=${encodeURIComponent(state.filter)}&limit=80&offset=${state.offset}`);
+  const payload = await api(`/api/duplicates?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
   state.items = payload.items;
   renderCurrent();
 }
 
 async function labelCurrent(label) {
-  const item = state.items[state.activeIndex];
+  const item = currentItem();
   if (!item) return;
   await api(`/api/duplicates/${item.id}/label`, {
     method: "POST",
     body: JSON.stringify({ label }),
   });
   await loadList(false);
+  await loadStats();
 }
 
 function move(delta) {
   if (!state.items.length) return;
   state.activeIndex = Math.max(0, Math.min(state.items.length - 1, state.activeIndex + delta));
   renderCurrent();
+}
+
+async function showDeletePlan() {
+  const payload = await api("/api/duplicates/apply-plan", { method: "POST", body: "{}" });
+  document.getElementById("deletePlanBox").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function runVerify(force) {
+  await api("/api/verify", {
+    method: "POST",
+    body: JSON.stringify({ force }),
+  });
+  document.getElementById("deletePlanBox").textContent = force
+    ? "AI-проверка всех пар запущена в фоне."
+    : "AI-проверка необработанных пар запущена в фоне.";
+}
+
+async function applyDeletePlan() {
+  const accepted = confirm("Применить удаление всех пар, которые помечены как duplicate?");
+  if (!accepted) return;
+  await api("/api/duplicates/apply", { method: "POST", body: "{}" });
+  document.getElementById("deletePlanBox").textContent = "Применение плана удаления запущено.";
 }
 
 document.getElementById("filterSelect").addEventListener("change", async (event) => {
@@ -142,6 +190,10 @@ document.querySelectorAll("[data-label]").forEach((button) => {
 
 document.getElementById("prevBtn").addEventListener("click", () => move(-1));
 document.getElementById("nextBtn").addEventListener("click", () => move(1));
+document.getElementById("verifyPendingBtn").addEventListener("click", () => runVerify(false));
+document.getElementById("verifyForceBtn").addEventListener("click", () => runVerify(true));
+document.getElementById("showDeletePlanBtn").addEventListener("click", showDeletePlan);
+document.getElementById("applyDeletePlanBtn").addEventListener("click", applyDeletePlan);
 
 window.addEventListener("keydown", async (event) => {
   if (event.target.matches("input, textarea, select")) return;
@@ -153,4 +205,5 @@ window.addEventListener("keydown", async (event) => {
   if (event.key.toLowerCase() === "c") await labelCurrent("clear");
 });
 
+loadStats();
 loadList(true);

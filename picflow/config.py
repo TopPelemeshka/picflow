@@ -9,6 +9,8 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "picflow.settings.json"
+DOTENV_PATHS = [PROJECT_ROOT / ".env", PROJECT_ROOT / ".env.local"]
+_DOTENV_LOADED = False
 
 
 @dataclass(slots=True)
@@ -181,7 +183,69 @@ class AppConfig:
         target.write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def ensure_dotenv_loaded() -> None:
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    for dotenv_path in DOTENV_PATHS:
+        if not dotenv_path.exists():
+            continue
+        for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            os.environ.setdefault(key, value)
+    _DOTENV_LOADED = True
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _split_api_keys(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    normalized = raw_value.replace(";", "\n").replace(",", "\n")
+    return [item.strip() for item in normalized.splitlines() if item.strip()]
+
+
+def apply_env_overrides(config: AppConfig) -> AppConfig:
+    ensure_dotenv_loaded()
+    if library_root := os.environ.get("PICFLOW_LIBRARY_ROOT"):
+        config.library_root = Path(library_root)
+    if duplicate_action := os.environ.get("PICFLOW_DUPLICATE_ACTION"):
+        config.duplicate_action = duplicate_action
+    if base_url := os.environ.get("PICFLOW_GEMINI_BASE_URL"):
+        config.verification.base_url = base_url
+    if proxy_url := os.environ.get("PICFLOW_PROXY_URL"):
+        config.verification.proxy_url = proxy_url
+    if model := os.environ.get("PICFLOW_GEMINI_MODEL"):
+        config.verification.model = model
+    env_keys = _split_api_keys(os.environ.get("PICFLOW_GEMINI_API_KEYS"))
+    if env_keys:
+        config.verification.api_keys = env_keys
+    config.verification.request_timeout_sec = _env_int(
+        "PICFLOW_GEMINI_REQUEST_TIMEOUT_SEC",
+        config.verification.request_timeout_sec,
+    )
+    config.verification.concurrency = max(
+        1,
+        _env_int("PICFLOW_GEMINI_CONCURRENCY", config.verification.concurrency),
+    )
+    return config
+
+
 def resolve_config_path(path: Path | str | None = None) -> Path:
+    ensure_dotenv_loaded()
     if path is not None:
         return Path(path)
     env_path = os.environ.get("PICFLOW_CONFIG")
@@ -194,9 +258,9 @@ def load_or_create_config(path: Path | str | None = None) -> AppConfig:
     target = resolve_config_path(path)
     if target.exists():
         payload = json.loads(target.read_text(encoding="utf-8"))
-        config = AppConfig.from_dict(payload)
+        config = apply_env_overrides(AppConfig.from_dict(payload))
     else:
-        config = AppConfig()
+        config = apply_env_overrides(AppConfig())
         config.save(target)
     config.ensure_state_dirs()
     return config

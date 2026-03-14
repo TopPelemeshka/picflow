@@ -9,8 +9,9 @@
   <body class="review-page">
     <main class="review-shell">
       <aside class="sidebar">
-        <a class="back-link" href="/">← Панель</a>
+        <a class="back-link" href="/"><- Панель</a>
         <h1>Категоризация</h1>
+        <div id="categorySummary" class="summary-box"></div>
         <label class="field">
           <span>Фильтр</span>
           <select id="categoryFilter"></select>
@@ -24,6 +25,13 @@
           <div><kbd>B</kbd> blocked</div>
           <div><kbd>C</kbd> clear</div>
         </div>
+        <div class="toolbar stack-toolbar">
+          <button id="categoryAiBtn">AI для необработанных</button>
+          <button id="categoryAiForceBtn">AI для всех approved</button>
+          <button id="categoryPlanBtn">План экспорта</button>
+          <button id="categoryApplyBtn" class="danger">Экспортировать размеченные</button>
+        </div>
+        <div id="categoryCounter" class="counter-box"></div>
         <div id="categoryList" class="pair-list"></div>
       </aside>
 
@@ -31,11 +39,11 @@
         <header class="workspace-head">
           <div>
             <p class="eyebrow">Категория</p>
-            <h2 id="categoryTitle">Загрузка…</h2>
+            <h2 id="categoryTitle">Загрузка...</h2>
           </div>
           <div class="toolbar">
-            <button id="categoryPrevBtn">← Назад</button>
-            <button id="categoryNextBtn">Вперед →</button>
+            <button id="categoryPrevBtn"><- Назад</button>
+            <button id="categoryNextBtn">Вперед -></button>
           </div>
         </header>
 
@@ -48,15 +56,10 @@
 
         <section class="panel detail-panel">
           <div class="decision-row" id="categoryButtons"></div>
-          <div class="toolbar">
-            <button id="categoryAiBtn">Запустить AI-категоризацию</button>
-            <button id="categoryPlanBtn">План экспорта</button>
-            <button id="categoryApplyBtn" class="danger">Экспортировать размеченные</button>
-          </div>
           <pre id="categoryPlanBox" class="log-box">План еще не запрошен.</pre>
         </section>
       </section>
     </main>
     <script src="/static/categorize.js"></script>
   </body>
-  </html>
+</html>

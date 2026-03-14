@@ -50,6 +50,8 @@ class PicFlowApp:
                 "approved_dir": str(self.config.approved_dir),
                 "rejected_dir": str(self.config.rejected_dir),
                 "duplicate_action": self.config.duplicate_action,
+                "model": self.config.verification.model,
+                "proxy_url": self.config.verification.proxy_url,
             },
         }
 

@@ -13,8 +13,8 @@ async function api(path, options = {}) {
 const state = {
   filter: "all",
   items: [],
-  offset: 0,
   activeIndex: 0,
+  windowRadius: 25,
 };
 
 function formatSize(bytes) {
@@ -29,14 +29,35 @@ function formatSize(bytes) {
   return `${value.toFixed(1)} ${units[index]}`;
 }
 
+function currentItem() {
+  return state.items[state.activeIndex];
+}
+
+function renderSummary(stats) {
+  const selection = stats.selection || {};
+  document.getElementById("selectionSummary").innerHTML = [
+    `<div><strong>Всего входящих:</strong> ${selection.total || 0}</div>`,
+    `<div><strong>Good:</strong> ${selection.good || 0}</div>`,
+    `<div><strong>Bad:</strong> ${selection.bad || 0}</div>`,
+    `<div><strong>Без метки:</strong> ${selection.pending || 0}</div>`,
+  ].join("");
+}
+
 function renderList() {
   const list = document.getElementById("selectionList");
+  const counter = document.getElementById("selectionCounter");
   if (!state.items.length) {
-    list.innerHTML = "<p>Во входящих папках нет фотографий под текущий фильтр.</p>";
+    list.innerHTML = "<p>Во входящих папках нет фото под текущий фильтр.</p>";
+    counter.textContent = "0 / 0";
     return;
   }
+  counter.textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+  const start = Math.max(0, state.activeIndex - state.windowRadius);
+  const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
   list.innerHTML = state.items
-    .map((item, index) => {
+    .slice(start, end)
+    .map((item, offset) => {
+      const index = start + offset;
       const active = index === state.activeIndex ? "active" : "";
       return `
         <article class="pair-item ${active}" data-index="${index}">
@@ -55,10 +76,6 @@ function renderList() {
   });
 }
 
-function currentItem() {
-  return state.items[state.activeIndex];
-}
-
 function renderCurrent() {
   renderList();
   const item = currentItem();
@@ -68,21 +85,25 @@ function renderCurrent() {
     document.getElementById("selectionMeta").textContent = "";
     return;
   }
-  document.getElementById("selectionTitle").textContent = `${item.file_name} • ${item.effective_label}`;
+  document.getElementById("selectionTitle").textContent = `${item.file_name} · ${item.effective_label}`;
   document.getElementById("selectionImage").src = item.media_url;
   document.getElementById("selectionMeta").innerHTML = `
     <strong>${item.file_name}</strong><br>
-    ${item.root_name} • ${item.width}×${item.height} • ${formatSize(item.size_bytes)}<br>
+    ${item.root_name} · ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
     ${item.path}
   `;
 }
 
+async function loadStats() {
+  const payload = await api("/api/dashboard");
+  renderSummary(payload.stats);
+}
+
 async function loadList(reset = false) {
   if (reset) {
-    state.offset = 0;
     state.activeIndex = 0;
   }
-  const payload = await api(`/api/selection?filter=${encodeURIComponent(state.filter)}&limit=150&offset=${state.offset}`);
+  const payload = await api(`/api/selection?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
   state.items = payload.items;
   renderCurrent();
 }
@@ -94,11 +115,10 @@ async function labelCurrent(label) {
     method: "POST",
     body: JSON.stringify({ label }),
   });
-  if (label === "good") item.selection_label = "good";
-  if (label === "bad") item.selection_label = "bad";
-  if (label === "clear") item.selection_label = null;
+  item.selection_label = label === "clear" ? null : label;
   item.effective_label = item.selection_label || "pending";
   renderCurrent();
+  await loadStats();
 }
 
 function move(delta) {
@@ -120,13 +140,13 @@ async function showPlan() {
 async function applySelection() {
   const item = currentItem();
   if (!item) return;
-  const accepted = confirm("Разобрать все входящие фото от начала очереди до текущего?");
+  const accepted = confirm("Разобрать входящие фото от начала очереди до текущей картинки?");
   if (!accepted) return;
   await api("/api/selection/apply", {
     method: "POST",
     body: JSON.stringify({ through_image_id: item.id }),
   });
-  document.getElementById("selectionPlanBox").textContent = "Запущена фоновая задача разбора.";
+  document.getElementById("selectionPlanBox").textContent = "Задача разнесения просмотренного префикса запущена.";
 }
 
 document.getElementById("selectionFilter").addEventListener("change", async (event) => {
@@ -154,4 +174,5 @@ window.addEventListener("keydown", async (event) => {
   if (event.key.toLowerCase() === "c") await labelCurrent("clear");
 });
 
+loadStats();
 loadList(true);

@@ -1,58 +1,89 @@
 # PicFlow
 
-Локальная Python-программа для полуавтоматического отбора картинок для Telegram-бота.
+Локальная Python-программа с веб-интерфейсом для полуавтоматического отбора картинок для Telegram-бота.
 
-Что реализовано сейчас:
+## Что уже реализовано
 
-- сканирование `D:\tg-bot_photo` и индексирование изображений в SQLite;
-- поиск кандидатов в дубли по perceptual hash, включая лёгкий кроп и небольшие визуальные изменения;
-- очередь AI-проверки пар через Gemini-compatible API с несколькими ключами;
-- локальный веб-интерфейс для ручного ревью пар и подтверждения удаления дублей;
-- планирование удаления дублей с приоритетом сохранения файлов из `all_photos`;
-- выявление конфликтов имен файлов среди неэталонных изображений.
-- good/bad отбор входящих фото с разбором просмотренного префикса по папкам;
-- ручная и AI-категоризация `approved_unsorted` с экспортом в `export/*`.
+- сканирование библиотеки изображений и индексирование в SQLite;
+- поиск кандидатов в дубли по perceptual hash и точному SHA-256;
+- AI-проверка пар через Gemini-compatible API с поддержкой нескольких ключей и локального прокси;
+- ручное ревью дублей в веб-интерфейсе;
+- удаление дублей с приоритетом сохранения файлов из `all_photos`;
+- устранение конфликтов имен после удаления дублей;
+- good/bad отбор входящих фото;
+- разнос просмотренного префикса в `approved_unsorted` и `rejected_pool`;
+- AI- и ручная категоризация `approved_unsorted`;
+- экспорт размеченных фото в `export/<category>`.
 
-Что будет следующим этапом:
+## Хранение ключей
 
-- интерфейс быстрого good/bad отбора изображений;
-- разнос просмотренных фото по папкам `approved_unsorted` и `rejected_pool`;
-- автокатегоризация по 5 категориям и экспорт в `export/*`.
+Ключи лучше хранить не в `picflow.settings.json`, а в `.env`.
+
+Поддерживаемые переменные:
+
+```dotenv
+PICFLOW_CONFIG=D:\picflow\picflow.test.settings.json
+PICFLOW_GEMINI_API_KEYS=KEY_1,KEY_2
+PICFLOW_PROXY_URL=http://127.0.0.1:12334
+PICFLOW_GEMINI_MODEL=gemma-3-27b-it
+PICFLOW_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+PICFLOW_GEMINI_CONCURRENCY=3
+PICFLOW_GEMINI_REQUEST_TIMEOUT_SEC=60
+```
+
+В репозитории есть шаблон: [`.env.example`](/D:/picflow/.env.example)
 
 ## Быстрый старт
 
-1. Проверь конфиг в `picflow.settings.json`. Если файла нет, он создастся сам при первом запуске.
-2. При необходимости скопируй настройки из `picflow.settings.example.json`.
-3. Добавь Gemini API ключи в `verification.api_keys`.
-4. Запусти сервер:
+1. Проверь `picflow.settings.json` или `picflow.test.settings.json`.
+2. Добавь ключи и прокси в `.env`.
+3. Запусти приложение:
 
 ```powershell
 python -m picflow runserver
 ```
 
-После запуска интерфейс будет доступен на [http://127.0.0.1:8765](http://127.0.0.1:8765).
-
-Для тестового каталога `D:\tg-bot_photo_test` уже добавлен отдельный конфиг `picflow.test.settings.json`:
+Для тестового каталога:
 
 ```powershell
 python -m picflow --config picflow.test.settings.json runserver
 ```
 
-## CLI команды
+После запуска интерфейс доступен на [http://127.0.0.1:8765](http://127.0.0.1:8765).
+
+## Батник
+
+В проект добавлен [run_picflow.bat](/D:/picflow/run_picflow.bat).
+
+Запуск по умолчанию:
+
+```bat
+run_picflow.bat
+```
+
+Запуск на тестовом конфиге:
+
+```bat
+run_picflow.bat test
+```
+
+Можно сделать ярлык на этот батник и запускать приложение только через него.
+
+## CLI
 
 ```powershell
 python -m picflow scan
 python -m picflow candidates
 python -m picflow verify --limit 200
-python -m picflow verify --limit 25 --force
+python -m picflow verify --force
 python -m picflow plan
-python -m picflow --config picflow.test.settings.json scan
 python -m picflow categorize-ai --limit 100
 python -m picflow export-plan
+python -m picflow export-apply
 ```
 
-## Важные замечания
+## Замечания
 
-- По умолчанию `duplicate_action` установлен в `delete`. Если нужен более безопасный режим, можно переключить его на перемещение в карантин.
-- Веб-интерфейс использует только локальные файлы из `library_root` и `.picflow`.
-- Для первого этапа не нужен Flask/FastAPI: сервер работает на стандартной библиотеке Python.
+- По умолчанию `duplicate_action=delete`.
+- Веб-интерфейс работает только с локальными файлами из `library_root` и `.picflow`.
+- `picflow.settings.json` удобно держать без секретов и использовать его только для путей и структуры папок.

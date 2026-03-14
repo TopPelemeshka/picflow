@@ -9,8 +9,9 @@
   <body class="review-page">
     <main class="review-shell">
       <aside class="sidebar">
-        <a class="back-link" href="/">← Панель</a>
+        <a class="back-link" href="/"><- Панель</a>
         <h1>Good / Bad отбор</h1>
+        <div id="selectionSummary" class="summary-box"></div>
         <label class="field">
           <span>Фильтр</span>
           <select id="selectionFilter">
@@ -24,9 +25,10 @@
           <div><kbd>G</kbd> Good</div>
           <div><kbd>B</kbd> Bad</div>
           <div><kbd>C</kbd> Сброс</div>
-          <div><kbd>←</kbd> Назад</div>
-          <div><kbd>→</kbd> Вперед</div>
+          <div><kbd>Left</kbd> Назад</div>
+          <div><kbd>Right</kbd> Вперед</div>
         </div>
+        <div id="selectionCounter" class="counter-box"></div>
         <div id="selectionList" class="pair-list"></div>
       </aside>
 
@@ -34,11 +36,11 @@
         <header class="workspace-head">
           <div>
             <p class="eyebrow">Отбор</p>
-            <h2 id="selectionTitle">Загрузка…</h2>
+            <h2 id="selectionTitle">Загрузка...</h2>
           </div>
           <div class="toolbar">
-            <button id="selectionPrevBtn">← Назад</button>
-            <button id="selectionNextBtn">Вперед →</button>
+            <button id="selectionPrevBtn"><- Назад</button>
+            <button id="selectionNextBtn">Вперед -></button>
           </div>
         </header>
 
@@ -65,4 +67,4 @@
     </main>
     <script src="/static/selection.js"></script>
   </body>
-  </html>
+</html>
