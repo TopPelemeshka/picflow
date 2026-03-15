@@ -716,3 +716,127 @@ kbd {
     min-width: 0;
   }
 }
+
+.review-shell--selection {
+  width: min(1500px, calc(100vw - 24px));
+  gap: 16px;
+}
+
+.selection-topbar,
+.selection-bottom {
+  display: grid;
+  gap: 16px;
+}
+
+.selection-topbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.selection-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.field--compact {
+  min-width: 120px;
+  flex: 0 0 140px;
+}
+
+.selection-stage {
+  min-height: 0;
+}
+
+.selection-image-shell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 72vh;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: rgba(255, 251, 245, 0.86);
+  box-shadow: var(--shadow);
+}
+
+.selection-image-shell img {
+  width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(31, 36, 48, 0.04);
+}
+
+.selection-like-badge {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  min-height: 44px;
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(31, 36, 48, 0.66);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+
+.selection-like-badge.is-active {
+  background: linear-gradient(135deg, var(--ok) 0%, #36a373 100%);
+  color: #fff;
+}
+
+.selection-bottom {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.selection-bottom__meta,
+.selection-bottom__actions {
+  display: grid;
+  gap: 14px;
+}
+
+.selection-nav,
+.selection-apply {
+  display: grid;
+  gap: 12px;
+}
+
+.selection-nav {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.selection-apply {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summary-grid--compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .selection-topbar,
+  .selection-bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .selection-nav,
+  .selection-apply {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-grid--compact {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .selection-image-shell {
+    min-height: 58vh;
+    padding: 12px;
+  }
+}

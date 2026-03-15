@@ -34,14 +34,16 @@ function renderStats(payload) {
   const selection = stats.selection || {};
   const category = stats.category || {};
   const categoryReady = (category.total || 0) - (category.pending || 0);
+  const liked = selection.good || 0;
+  const unliked = Math.max(0, (selection.total || 0) - liked);
   const cards = [
     statusCard("Всего фото", stats.images_total || 0, "Все активные файлы в индексе"),
     statusCard("Эталон", roles.reference || 0, "Содержимое all_photos"),
     statusCard("Входящие", roles.incoming || 0, "Еще не разобранные папки"),
     statusCard("Дубли", stats.candidates.duplicate || 0, "Уже помечены как duplicate"),
     statusCard("На проверке", (stats.candidates.total || 0) - (stats.candidates.distinct || 0), "Pending, duplicate и blocked"),
-    statusCard("Good", selection.good || 0, "Уже готово к approved_unsorted"),
-    statusCard("Bad", selection.bad || 0, "Уже готово к rejected_pool"),
+    statusCard("Нравится", liked, "Будет отправлено в approved_unsorted"),
+    statusCard("Без отметки", unliked, "Автоматически уйдет в rejected_pool"),
     statusCard("Категории готовы", categoryReady || 0, "Размеченные approved фото"),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");

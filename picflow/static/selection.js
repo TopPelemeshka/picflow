@@ -31,77 +31,83 @@ function formatSize(bytes) {
 }
 
 const state = {
-  filter: "all",
   items: [],
   activeIndex: 0,
-  windowRadius: 24,
+  batchSize: 200,
 };
 
 function currentItem() {
   return state.items[state.activeIndex];
 }
 
+function isLiked(item) {
+  return item?.selection_label === "good";
+}
+
+function batchStart() {
+  return Math.floor(state.activeIndex / state.batchSize) * state.batchSize;
+}
+
+function batchEndExclusive() {
+  return Math.min(state.items.length, batchStart() + state.batchSize);
+}
+
+function batchItems() {
+  return state.items.slice(batchStart(), batchEndExclusive());
+}
+
 function renderSummary(stats) {
   const selection = stats.selection || {};
+  const total = selection.total || 0;
+  const liked = selection.good || 0;
+  const unmarked = Math.max(0, total - liked);
+  const currentBatch = batchItems();
+  const batchLiked = currentBatch.filter(isLiked).length;
+  const batchUnmarked = Math.max(0, currentBatch.length - batchLiked);
   document.getElementById("selectionSummary").innerHTML = [
-    `<div><strong>Всего входящих</strong><span>${selection.total || 0}</span></div>`,
-    `<div><strong>Good</strong><span>${selection.good || 0}</span></div>`,
-    `<div><strong>Bad</strong><span>${selection.bad || 0}</span></div>`,
-    `<div><strong>Без метки</strong><span>${selection.pending || 0}</span></div>`,
+    `<div><strong>В пачке</strong><span>${currentBatch.length}</span></div>`,
+    `<div><strong>Лайков в пачке</strong><span>${batchLiked}</span></div>`,
+    `<div><strong>Без лайка в пачке</strong><span>${batchUnmarked}</span></div>`,
+    `<div><strong>Всего входящих</strong><span>${total}</span></div>`,
+    `<div><strong>Всего лайков</strong><span>${liked}</span></div>`,
+    `<div><strong>Всего без лайка</strong><span>${unmarked}</span></div>`,
   ].join("");
 }
 
-function renderQueue() {
-  const node = document.getElementById("selectionList");
-  if (!state.items.length) {
-    node.innerHTML = '<div class="empty-state">Во входящих папках нет картинок под этот фильтр.</div>';
-    document.getElementById("selectionCounter").textContent = "0 / 0";
-    return;
-  }
-
-  document.getElementById("selectionCounter").textContent = `${state.activeIndex + 1} / ${state.items.length}`;
-  const start = Math.max(0, state.activeIndex - state.windowRadius);
-  const end = Math.min(state.items.length, state.activeIndex + state.windowRadius + 1);
-  node.innerHTML = state.items
-    .slice(start, end)
-    .map((item, offset) => {
-      const index = start + offset;
-      const active = index === state.activeIndex ? " active" : "";
-      return `
-        <article class="queue-item${active}" data-index="${index}">
-          <strong>${escapeHtml(item.file_name)}</strong>
-          <div>${escapeHtml(item.root_name)}</div>
-          <span class="queue-item__tag">${escapeHtml(item.effective_label)}</span>
-        </article>
-      `;
-    })
-    .join("");
-
-  node.querySelectorAll("[data-index]").forEach((item) => {
-    item.addEventListener("click", () => {
-      state.activeIndex = Number(item.dataset.index);
-      renderCurrent();
-    });
-  });
-}
-
 function renderCurrent() {
-  renderQueue();
   const item = currentItem();
+  const likeButton = document.getElementById("selectionLikeBtn");
+  const likeBadge = document.getElementById("selectionLikeBadge");
+  const image = document.getElementById("selectionImage");
+
   if (!item) {
     document.getElementById("selectionTitle").textContent = "Нет фото";
-    document.getElementById("selectionImage").removeAttribute("src");
     document.getElementById("selectionMeta").textContent = "";
+    document.getElementById("selectionCounter").textContent = "0 / 0";
+    document.getElementById("selectionBatchMeta").textContent = "Пачка 0";
+    image.removeAttribute("src");
+    likeButton.textContent = "Нравится";
+    likeBadge.textContent = "Без лайка";
+    likeBadge.classList.remove("is-active");
     return;
   }
 
-  document.getElementById("selectionTitle").textContent = `${item.file_name} · ${item.effective_label}`;
-  document.getElementById("selectionImage").src = item.media_url;
+  const liked = isLiked(item);
+  const batchStartIndex = batchStart();
+  const batchEndIndex = batchEndExclusive();
+  document.getElementById("selectionCounter").textContent = `${state.activeIndex + 1} / ${state.items.length}`;
+  document.getElementById("selectionBatchMeta").textContent = `Пачка ${batchStartIndex + 1}-${batchEndIndex}`;
+  document.getElementById("selectionTitle").textContent = item.file_name;
+  image.src = item.media_url;
   document.getElementById("selectionMeta").innerHTML = `
     <strong>${escapeHtml(item.file_name)}</strong><br>
     ${escapeHtml(item.root_name)} · ${item.width}x${item.height} · ${formatSize(item.size_bytes)}<br>
     ${escapeHtml(item.path)}
   `;
+  likeButton.textContent = liked ? "Убрать лайк" : "Нравится";
+  likeButton.classList.toggle("primary", !liked);
+  likeBadge.textContent = liked ? "Нравится" : "Без лайка";
+  likeBadge.classList.toggle("is-active", liked);
 }
 
 async function loadStats() {
@@ -110,7 +116,7 @@ async function loadStats() {
 }
 
 async function loadList(reset = false) {
-  const payload = await api(`/api/selection?filter=${encodeURIComponent(state.filter)}&limit=5000&offset=0`);
+  const payload = await api("/api/selection?filter=all&limit=5000&offset=0");
   state.items = payload.items;
   if (reset) {
     state.activeIndex = 0;
@@ -121,71 +127,89 @@ async function loadList(reset = false) {
   renderCurrent();
 }
 
-async function labelCurrent(label) {
+async function setLiked(liked) {
   const item = currentItem();
   if (!item) return;
+  const label = liked ? "good" : "clear";
   await api(`/api/selection/${item.id}/label`, {
     method: "POST",
     body: JSON.stringify({ label }),
   });
-  item.selection_label = label === "clear" ? null : label;
-  item.effective_label = item.selection_label || "pending";
+  item.selection_label = liked ? "good" : null;
+  item.effective_label = liked ? "liked" : "auto-reject";
   renderCurrent();
   await loadStats();
+}
+
+async function toggleLiked() {
+  const item = currentItem();
+  if (!item) return;
+  await setLiked(!isLiked(item));
 }
 
 function move(delta) {
   if (!state.items.length) return;
   state.activeIndex = Math.max(0, Math.min(state.items.length - 1, state.activeIndex + delta));
   renderCurrent();
+  void loadStats();
 }
 
 async function showPlan() {
-  const item = currentItem();
-  if (!item) return;
   const payload = await api("/api/selection/apply-plan", {
     method: "POST",
-    body: JSON.stringify({ through_image_id: item.id }),
+    body: JSON.stringify({ batch_offset: batchStart(), batch_size: state.batchSize }),
   });
   document.getElementById("selectionPlanBox").textContent = JSON.stringify(payload, null, 2);
 }
 
 async function applySelection() {
-  const item = currentItem();
-  if (!item) return;
-  const accepted = confirm("Разнести просмотренный блок от начала очереди до текущей карточки?");
+  if (!currentItem()) return;
+  const start = batchStart() + 1;
+  const end = batchEndExclusive();
+  const accepted = confirm(`Разнести только текущую пачку ${start}-${end}?`);
   if (!accepted) return;
   await api("/api/selection/apply", {
     method: "POST",
-    body: JSON.stringify({ through_image_id: item.id }),
+    body: JSON.stringify({ batch_offset: batchStart(), batch_size: state.batchSize }),
   });
-  document.getElementById("selectionPlanBox").textContent =
-    "Задача разнесения просмотренного блока запущена.";
+  document.getElementById("selectionPlanBox").textContent = "Задача разноса текущей пачки запущена.";
 }
 
-document.getElementById("selectionFilter").addEventListener("change", async (event) => {
-  state.filter = event.target.value;
-  await loadList(true);
+document.getElementById("selectionBatchSize").addEventListener("change", async (event) => {
+  state.batchSize = Number(event.target.value) || 200;
+  renderCurrent();
+  await loadStats();
 });
 
-document.querySelectorAll("[data-selection-label]").forEach((button) => {
-  button.addEventListener("click", async () => {
-    await labelCurrent(button.dataset.selectionLabel);
-  });
-});
-
+document.getElementById("selectionLikeBtn").addEventListener("click", toggleLiked);
+document.getElementById("selectionLikeBadge").addEventListener("click", toggleLiked);
 document.getElementById("selectionPrevBtn").addEventListener("click", () => move(-1));
 document.getElementById("selectionNextBtn").addEventListener("click", () => move(1));
 document.getElementById("selectionPlanBtn").addEventListener("click", showPlan);
 document.getElementById("selectionApplyBtn").addEventListener("click", applySelection);
+document.getElementById("selectionImage").addEventListener("click", toggleLiked);
 
 window.addEventListener("keydown", async (event) => {
   if (event.target.matches("input, textarea, select")) return;
-  if (event.key === "ArrowLeft") move(-1);
-  if (event.key === "ArrowRight") move(1);
-  if (event.key.toLowerCase() === "g") await labelCurrent("good");
-  if (event.key.toLowerCase() === "b") await labelCurrent("bad");
-  if (event.key.toLowerCase() === "c") await labelCurrent("clear");
+  if (event.code === "ArrowLeft") {
+    event.preventDefault();
+    move(-1);
+    return;
+  }
+  if (event.code === "ArrowRight") {
+    event.preventDefault();
+    move(1);
+    return;
+  }
+  if (event.code === "Space" || event.code === "KeyL" || event.code === "Enter") {
+    event.preventDefault();
+    await toggleLiked();
+    return;
+  }
+  if (event.code === "KeyC" || event.code === "Delete" || event.code === "Backspace") {
+    event.preventDefault();
+    await setLiked(false);
+  }
 });
 
 loadStats();

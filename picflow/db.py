@@ -429,6 +429,10 @@ class Database:
         where = "WHERE is_deleted = 0 AND role = 'incoming'"
         if filter_mode == "pending":
             where += " AND COALESCE(selection_label, 'pending') = 'pending'"
+        elif filter_mode == "liked":
+            where += " AND selection_label = 'good'"
+        elif filter_mode == "unliked":
+            where += " AND COALESCE(selection_label, 'pending') != 'good'"
         elif filter_mode == "good":
             where += " AND selection_label = 'good'"
         elif filter_mode == "bad":

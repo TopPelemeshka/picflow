@@ -288,13 +288,19 @@ class PicFlowHandler(BaseHTTPRequestHandler):
         self._send_json({"ok": True, "id": image_id, "label": label})
 
     def _selection_plan(self, body: dict) -> None:
-        through_image_id = int(body.get("through_image_id", 0))
-        if not through_image_id:
-            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужен through_image_id")
+        batch_offset = int(body.get("batch_offset", -1))
+        batch_size = int(body.get("batch_size", 0))
+        if batch_offset < 0 or batch_size <= 0:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужны batch_offset и batch_size")
             return
-        actions = plan_selection_actions(self.app.db, self.app.config, through_image_id)
-        good = sum(1 for action in actions if "selection=good" in action.note)
-        bad = sum(1 for action in actions if "selection=bad" in action.note)
+        actions = plan_selection_actions(
+            self.app.db,
+            self.app.config,
+            batch_offset=batch_offset,
+            batch_size=batch_size,
+        )
+        liked = sum(1 for action in actions if "selection=good" in action.note)
+        unmarked = sum(1 for action in actions if "selection=bad" in action.note)
         preview = [
             {
                 "kind": action.kind,
@@ -304,20 +310,31 @@ class PicFlowHandler(BaseHTTPRequestHandler):
             }
             for action in actions[:100]
         ]
-        self._send_json({"total": len(actions), "good": good, "bad": bad, "preview": preview})
+        self._send_json(
+            {
+                "total": len(actions),
+                "liked": liked,
+                "unmarked": unmarked,
+                "batch_offset": batch_offset,
+                "batch_size": batch_size,
+                "preview": preview,
+            }
+        )
 
     def _apply_selection_job(self, body: dict) -> None:
-        through_image_id = int(body.get("through_image_id", 0))
-        if not through_image_id:
-            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужен through_image_id")
+        batch_offset = int(body.get("batch_offset", -1))
+        batch_size = int(body.get("batch_size", 0))
+        if batch_offset < 0 or batch_size <= 0:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужны batch_offset и batch_size")
             return
         job_id = self.app.jobs.start_job(
             "selection_apply",
-            {"through_image_id": through_image_id},
+            {"batch_offset": batch_offset, "batch_size": batch_size},
             lambda progress: apply_selection_actions(
                 self.app.db,
                 self.app.config,
-                through_image_id,
+                batch_offset=batch_offset,
+                batch_size=batch_size,
                 progress=progress,
             ),
         )
