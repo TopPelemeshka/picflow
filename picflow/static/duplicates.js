@@ -34,6 +34,7 @@ function statusClass(label) {
   if (label === "duplicate") return "status-chip status-chip--duplicate";
   if (label === "distinct") return "status-chip status-chip--distinct";
   if (label === "blocked") return "status-chip status-chip--blocked";
+  if (label === "error") return "status-chip status-chip--error";
   return "status-chip status-chip--pending";
 }
 
@@ -51,6 +52,7 @@ function totalForFilter() {
   if (state.filter === "duplicates") return counts.duplicate || 0;
   if (state.filter === "distinct") return counts.distinct || 0;
   if (state.filter === "blocked") return counts.blocked || 0;
+  if (state.filter === "error") return counts.error || 0;
   if (state.filter === "all") return counts.total || 0;
   return (counts.total || 0) - (counts.distinct || 0);
 }
@@ -71,6 +73,7 @@ function renderSummary() {
     `<div><strong>Duplicate</strong><span>${counts.duplicate || 0}</span></div>`,
     `<div><strong>Blocked</strong><span>${counts.blocked || 0}</span></div>`,
     `<div><strong>Distinct</strong><span>${counts.distinct || 0}</span></div>`,
+    `<div><strong>Error</strong><span>${counts.error || 0}</span></div>`,
   ].join("");
 }
 

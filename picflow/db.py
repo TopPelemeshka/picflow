@@ -339,13 +339,15 @@ class Database:
         where = ""
         params: list[Any] = []
         if filter_mode == "needs-review":
-            where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') IN ('pending', 'duplicate', 'blocked')"
+            where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') IN ('pending', 'duplicate', 'blocked', 'error')"
         elif filter_mode == "duplicates":
             where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') = 'duplicate'"
         elif filter_mode == "distinct":
             where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') = 'distinct'"
         elif filter_mode == "blocked":
             where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') = 'blocked'"
+        elif filter_mode == "error":
+            where = "AND COALESCE(dc.manual_label, dc.ai_label, 'pending') = 'error'"
         params.extend([limit, offset])
         query = f"""
         SELECT

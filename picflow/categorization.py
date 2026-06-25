@@ -218,7 +218,17 @@ def run_categorization(
 
     items = db.list_category_queue()
     if not force:
-        items = [item for item in items if not item.get("category_label")]
+        items = [
+            item
+            for item in items
+            if (
+                not item.get("category_label")
+                or (
+                    item.get("category_label") == "blocked"
+                    and item.get("category_source") == "ai"
+                )
+            )
+        ]
     if limit is not None:
         items = items[:limit]
     if not items:
