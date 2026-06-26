@@ -33,6 +33,7 @@ function renderStats(payload) {
   const roles = stats.images_by_role || {};
   const selection = stats.selection || {};
   const category = stats.category || {};
+  const mobile = stats.mobile || {};
   const categoryReady = (category.total || 0) - (category.pending || 0);
   const liked = selection.good || 0;
   const unliked = Math.max(0, (selection.total || 0) - liked);
@@ -44,6 +45,7 @@ function renderStats(payload) {
     statusCard("На проверке", (stats.candidates.total || 0) - (stats.candidates.distinct || 0), "Pending, duplicate и blocked"),
     statusCard("Нравится", liked, "Будет отправлено в approved_unsorted"),
     statusCard("Без отметки", unliked, "Автоматически уйдет в rejected_pool"),
+    statusCard("Mobile Open", mobile.open_batches || 0, "Открытые батчи на телефонах"),
     statusCard("Категории готовы", categoryReady || 0, "Размеченные approved фото"),
   ];
   document.getElementById("statsGrid").innerHTML = cards.join("");

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PicFlow Mobile Review</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <main class="review-shell review-shell--wide mobile-admin-shell">
+      <section class="page-top">
+        <article class="panel-card">
+          <a class="back-link" href="/">← На главный экран</a>
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Mobile Review</p>
+              <h1>Управление телефоном и батчами</h1>
+            </div>
+            <button id="mobileRefreshBtn" class="ghost-button">Обновить</button>
+          </div>
+          <p class="page-intro">
+            Здесь создается код подключения, видно состояние устройств и можно применять или отменять мобильные батчи.
+            Страница работает только локально на ПК; мобильный клиент ходит в отдельный защищенный API.
+          </p>
+          <div id="mobileStats" class="summary-grid summary-grid--compact"></div>
+          <div class="note-box">
+            Для телефона сервер нужно запускать явно в LAN, например:
+            <code>python -m picflow runserver --host 0.0.0.0 --port 8765</code>.
+            Старый web-интерфейс при этом все равно остается доступен только с localhost.
+          </div>
+        </article>
+
+        <article class="panel-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Pairing</p>
+              <h2>Подключение телефона</h2>
+            </div>
+          </div>
+          <div class="controls-grid">
+            <label class="field field--compact">
+              <span>TTL, мин</span>
+              <select id="pairingTtl">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="60">60</option>
+              </select>
+            </label>
+            <button id="pairingCodeBtn" class="primary">Сгенерировать код</button>
+          </div>
+          <div id="pairingCodeBox" class="mobile-pairing-box">
+            <div class="empty-state">Код подключения еще не сгенерирован.</div>
+          </div>
+          <div id="rootSummary" class="config-list"></div>
+        </article>
+      </section>
+
+      <section class="mobile-admin-grid">
+        <article class="panel-card mobile-admin-sidebar">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Devices</p>
+              <h2>Устройства</h2>
+            </div>
+          </div>
+          <div id="deviceList" class="config-list"></div>
+        </article>
+
+        <article class="panel-card mobile-admin-main">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Batches</p>
+              <h2>Мобильные батчи</h2>
+            </div>
+          </div>
+          <div class="controls-grid">
+            <label class="field field--compact">
+              <span>Статус</span>
+              <select id="batchStatusFilter">
+                <option value="all">Все</option>
+                <option value="open">Open</option>
+                <option value="completed">Completed</option>
+                <option value="canceled">Canceled</option>
+              </select>
+            </label>
+            <label class="field field--compact">
+              <span>Устройство</span>
+              <select id="batchDeviceFilter">
+                <option value="">Все устройства</option>
+              </select>
+            </label>
+          </div>
+          <div class="mobile-admin-layout">
+            <div id="batchList" class="queue-list"></div>
+
+            <div class="mobile-batch-detail">
+              <div id="batchMeta" class="panel-card mobile-subpanel">
+                <div class="empty-state">Выбери батч слева, чтобы посмотреть детали.</div>
+              </div>
+
+              <div class="mobile-batch-workspace">
+                <section class="panel-card mobile-subpanel">
+                  <div class="section-head">
+                    <div>
+                      <p class="eyebrow">Items</p>
+                      <h3>Содержимое батча</h3>
+                    </div>
+                  </div>
+                  <div id="batchItems" class="queue-list"></div>
+                </section>
+
+                <section class="panel-card mobile-subpanel">
+                  <div class="section-head">
+                    <div>
+                      <p class="eyebrow">Preview</p>
+                      <h3>Карточка элемента</h3>
+                    </div>
+                  </div>
+                  <div id="itemPreview" class="mobile-preview-panel">
+                    <div class="empty-state">Выбери элемент батча для предпросмотра.</div>
+                  </div>
+                  <pre id="mobilePlanBox" class="log-box">План применения батча еще не запрошен.</pre>
+                </section>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+    <script src="/static/mobile_review.js"></script>
+  </body>
+</html>

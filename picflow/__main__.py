@@ -5,6 +5,7 @@ import argparse
 from .categorization import apply_export_actions, plan_export_actions, run_categorization
 from .config import load_or_create_config
 from .db import Database
+from .mobile import PAIRING_TTL_MINUTES, create_pairing_code
 from .duplicates import build_duplicate_candidates, plan_duplicate_actions, scan_library
 from .verifier import run_verification
 from .web import run_server
@@ -15,7 +16,9 @@ def main() -> None:
     parser.add_argument("--config", default=None, help="Путь к конфигу PicFlow")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("runserver", help="Запустить локальный веб-интерфейс")
+    runserver_parser = subparsers.add_parser("runserver", help="Запустить локальный веб-интерфейс")
+    runserver_parser.add_argument("--host", default="127.0.0.1")
+    runserver_parser.add_argument("--port", type=int, default=8765)
     subparsers.add_parser("scan", help="Просканировать библиотеку")
     subparsers.add_parser("candidates", help="Построить кандидатов в дубли")
     verify_parser = subparsers.add_parser("verify", help="Запустить AI-проверку")
@@ -27,6 +30,8 @@ def main() -> None:
     categorize_parser.add_argument("--force", action="store_true")
     subparsers.add_parser("export-plan", help="Показать план экспорта категорий")
     subparsers.add_parser("export-apply", help="Применить экспорт категорий")
+    mobile_pair_parser = subparsers.add_parser("mobile-pair", help="Сгенерировать одноразовый код подключения телефона")
+    mobile_pair_parser.add_argument("--ttl-minutes", type=int, default=PAIRING_TTL_MINUTES)
 
     args = parser.parse_args()
     config = load_or_create_config(args.config)
@@ -34,7 +39,7 @@ def main() -> None:
     db.init()
 
     if args.command == "runserver":
-        run_server(config_path=args.config)
+        run_server(host=args.host, port=args.port, config_path=args.config)
         return
     if args.command == "scan":
         print(scan_library(db, config))
@@ -62,6 +67,11 @@ def main() -> None:
         return
     if args.command == "export-apply":
         print(apply_export_actions(db, config))
+        return
+    if args.command == "mobile-pair":
+        payload = create_pairing_code(db, ttl_minutes=args.ttl_minutes)
+        print(payload)
+        return
 
 
 if __name__ == "__main__":

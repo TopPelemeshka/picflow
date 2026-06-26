@@ -1,0 +1,33 @@
+{
+  "name": "picflow-mobile-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "android:toolchain": "./scripts/ensure-android-toolchain.sh",
+    "android:prebuild": "expo prebuild -p android",
+    "android:deps:warm": "bash -lc 'source ./scripts/ensure-android-toolchain.sh >/dev/null && export GRADLE_USER_HOME=\"${PICFLOW_ANDROID_TOOLCHAIN_ROOT:-${HOME}/.cache/picflow-mobile-toolchain}/gradle-home\" && export HOME=\"${PICFLOW_ANDROID_TOOLCHAIN_ROOT:-${HOME}/.cache/picflow-mobile-toolchain}/home\" && export JAVA_TOOL_OPTIONS=\"${JAVA_TOOL_OPTIONS:+${JAVA_TOOL_OPTIONS} }-Duser.home=${HOME}\" && mkdir -p \"$GRADLE_USER_HOME\" \"$HOME/.android\" && cd android && ./gradlew :app:checkDebugAarMetadata'",
+    "android:apk:debug": "./scripts/build-android-debug.sh",
+    "android:apk:standalone": "./scripts/build-android-release.sh",
+    "android:apk:release": "./scripts/build-android-release.sh",
+    "typecheck": "tsc --noEmit",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.23.1",
+    "expo": "~53.0.17",
+    "expo-asset": "~11.1.7",
+    "expo-file-system": "~18.1.11",
+    "expo-status-bar": "~2.2.3",
+    "expo-system-ui": "~5.0.11",
+    "react": "19.0.0",
+    "react-native": "0.79.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.0.10",
+    "typescript": "~5.8.3"
+  }
+}

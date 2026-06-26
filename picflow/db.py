@@ -142,6 +142,63 @@ class Database:
                   note TEXT,
                   created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS mobile_pairing_codes (
+                  id INTEGER PRIMARY KEY,
+                  code_hash TEXT NOT NULL UNIQUE,
+                  created_at TEXT NOT NULL,
+                  expires_at TEXT NOT NULL,
+                  consumed_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS mobile_devices (
+                  id INTEGER PRIMARY KEY,
+                  device_name TEXT NOT NULL,
+                  token_hash TEXT NOT NULL UNIQUE,
+                  created_at TEXT NOT NULL,
+                  last_seen_at TEXT NOT NULL,
+                  revoked_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS review_batches (
+                  id INTEGER PRIMARY KEY,
+                  uid TEXT NOT NULL UNIQUE,
+                  device_id INTEGER NOT NULL REFERENCES mobile_devices(id) ON DELETE CASCADE,
+                  name TEXT NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'open',
+                  selected_roots TEXT NOT NULL,
+                  total_items INTEGER NOT NULL DEFAULT 0,
+                  cursor_index INTEGER NOT NULL DEFAULT 0,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  completed_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS review_batch_items (
+                  id INTEGER PRIMARY KEY,
+                  batch_id INTEGER NOT NULL REFERENCES review_batches(id) ON DELETE CASCADE,
+                  image_id INTEGER REFERENCES images(id) ON DELETE SET NULL,
+                  position INTEGER NOT NULL,
+                  snapshot_path TEXT NOT NULL,
+                  snapshot_root_name TEXT NOT NULL,
+                  snapshot_file_name TEXT NOT NULL,
+                  snapshot_width INTEGER NOT NULL,
+                  snapshot_height INTEGER NOT NULL,
+                  snapshot_size_bytes INTEGER NOT NULL,
+                  decision TEXT,
+                  client_updated_at TEXT,
+                  decision_updated_at TEXT,
+                  applied_action TEXT,
+                  applied_at TEXT,
+                  UNIQUE(batch_id, position),
+                  UNIQUE(batch_id, image_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mobile_pairing_expires ON mobile_pairing_codes(expires_at);
+                CREATE INDEX IF NOT EXISTS idx_mobile_device_seen ON mobile_devices(last_seen_at);
+                CREATE INDEX IF NOT EXISTS idx_review_batches_device_status ON review_batches(device_id, status);
+                CREATE INDEX IF NOT EXISTS idx_review_batch_items_batch_position ON review_batch_items(batch_id, position);
+                CREATE INDEX IF NOT EXISTS idx_review_batch_items_image ON review_batch_items(image_id);
                 """
             )
             self._ensure_column(conn, "images", "selection_label", "TEXT")
@@ -787,6 +844,7 @@ class Database:
             "candidates": self.candidate_counts(),
             "selection": self.selection_counts(),
             "category": self.category_counts(),
+            "mobile": self.mobile_stats(),
         }
 
     def log_action(
@@ -807,3 +865,497 @@ class Database:
                 """,
                 (kind, old_path, new_path, image_id, note, created_at),
             )
+
+    def create_mobile_pairing_code(self, code_hash: str, created_at: str, expires_at: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO mobile_pairing_codes (code_hash, created_at, expires_at)
+                VALUES (?, ?, ?)
+                """,
+                (code_hash, created_at, expires_at),
+            )
+
+    def consume_mobile_pairing_code(self, code_hash: str, consumed_at: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM mobile_pairing_codes
+                WHERE code_hash = ?
+                  AND consumed_at IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (code_hash,),
+            ).fetchone()
+            if not row:
+                return None
+            conn.execute(
+                "UPDATE mobile_pairing_codes SET consumed_at = ? WHERE id = ?",
+                (consumed_at, row["id"]),
+            )
+        return dict(row)
+
+    def create_mobile_device(
+        self,
+        device_name: str,
+        token_hash: str,
+        created_at: str,
+        last_seen_at: str,
+    ) -> dict[str, Any]:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO mobile_devices (device_name, token_hash, created_at, last_seen_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (device_name, token_hash, created_at, last_seen_at),
+            )
+            device_id = int(cursor.lastrowid)
+            row = conn.execute("SELECT * FROM mobile_devices WHERE id = ?", (device_id,)).fetchone()
+        return dict(row) if row else {}
+
+    def get_mobile_device_by_token_hash(self, token_hash: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM mobile_devices
+                WHERE token_hash = ?
+                  AND revoked_at IS NULL
+                """,
+                (token_hash,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_mobile_device(self, device_id: int) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM mobile_devices
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (device_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def touch_mobile_device(self, device_id: int, last_seen_at: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE mobile_devices SET last_seen_at = ? WHERE id = ?",
+                (last_seen_at, device_id),
+            )
+
+    def revoke_mobile_device(self, device_id: int, revoked_at: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE mobile_devices
+                SET revoked_at = ?
+                WHERE id = ?
+                """,
+                (revoked_at, device_id),
+            )
+
+    def list_mobile_devices(self) -> list[dict[str, Any]]:
+        query = """
+        SELECT
+          md.*,
+          COALESCE(SUM(CASE WHEN rb.status = 'open' THEN 1 ELSE 0 END), 0) AS open_batches,
+          COALESCE(SUM(CASE WHEN rb.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_batches,
+          COALESCE(SUM(CASE WHEN rb.status = 'canceled' THEN 1 ELSE 0 END), 0) AS canceled_batches
+        FROM mobile_devices md
+        LEFT JOIN review_batches rb ON rb.device_id = md.id
+        GROUP BY md.id
+        ORDER BY
+          CASE WHEN md.revoked_at IS NULL THEN 0 ELSE 1 END,
+          md.last_seen_at DESC,
+          md.id DESC
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_mobile_root_counts(self) -> list[dict[str, Any]]:
+        query = """
+        SELECT
+          i.root_name,
+          COUNT(*) AS total,
+          SUM(
+            CASE
+              WHEN EXISTS (
+                SELECT 1
+                FROM review_batch_items rbi
+                JOIN review_batches rb ON rb.id = rbi.batch_id
+                WHERE rbi.image_id = i.id
+                  AND rb.status = 'open'
+                  AND rbi.applied_at IS NULL
+              ) THEN 1
+              ELSE 0
+            END
+          ) AS reserved
+        FROM images i
+        WHERE i.is_deleted = 0
+          AND i.role = 'incoming'
+        GROUP BY i.root_name
+        ORDER BY i.root_name ASC
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_available_review_images(
+        self,
+        root_names: list[str] | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        params: list[Any] = []
+        root_where = ""
+        if root_names:
+            placeholders = ", ".join("?" for _ in root_names)
+            root_where = f" AND i.root_name IN ({placeholders})"
+            params.extend(root_names)
+        params.append(limit)
+        query = f"""
+        SELECT
+          i.id,
+          i.path,
+          i.root_name,
+          i.role,
+          i.file_name,
+          i.width,
+          i.height,
+          i.size_bytes
+        FROM images i
+        WHERE i.is_deleted = 0
+          AND i.role = 'incoming'
+          AND i.id NOT IN (
+            SELECT rbi.image_id
+            FROM review_batch_items rbi
+            JOIN review_batches rb ON rb.id = rbi.batch_id
+            WHERE rb.status = 'open'
+              AND rbi.applied_at IS NULL
+              AND rbi.image_id IS NOT NULL
+          )
+          {root_where}
+        ORDER BY i.root_name ASC, i.path ASC
+        LIMIT ?
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_review_batch(
+        self,
+        uid: str,
+        device_id: int,
+        name: str,
+        selected_roots: str,
+        total_items: int,
+        created_at: str,
+        updated_at: str,
+    ) -> dict[str, Any]:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO review_batches
+                  (uid, device_id, name, status, selected_roots, total_items, cursor_index, created_at, updated_at)
+                VALUES (?, ?, ?, 'open', ?, ?, 0, ?, ?)
+                """,
+                (uid, device_id, name, selected_roots, total_items, created_at, updated_at),
+            )
+            batch_id = int(cursor.lastrowid)
+            row = conn.execute("SELECT * FROM review_batches WHERE id = ?", (batch_id,)).fetchone()
+        return dict(row) if row else {}
+
+    def add_review_batch_items(self, batch_id: int, items: list[dict[str, Any]]) -> None:
+        if not items:
+            return
+        rows = [
+            (
+                batch_id,
+                item["image_id"],
+                item["position"],
+                item["snapshot_path"],
+                item["snapshot_root_name"],
+                item["snapshot_file_name"],
+                item["snapshot_width"],
+                item["snapshot_height"],
+                item["snapshot_size_bytes"],
+            )
+            for item in items
+        ]
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO review_batch_items (
+                  batch_id,
+                  image_id,
+                  position,
+                  snapshot_path,
+                  snapshot_root_name,
+                  snapshot_file_name,
+                  snapshot_width,
+                  snapshot_height,
+                  snapshot_size_bytes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+
+    def list_review_batches(self, device_id: int, status: str | None = None) -> list[dict[str, Any]]:
+        params: list[Any] = [device_id]
+        where = "WHERE device_id = ?"
+        if status is not None:
+            where += " AND status = ?"
+            params.append(status)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM review_batches
+                {where}
+                ORDER BY updated_at DESC, id DESC
+                """,
+                tuple(params),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_all_review_batches(
+        self,
+        *,
+        status: str | None = None,
+        device_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params: list[Any] = []
+        where_parts: list[str] = []
+        if status is not None:
+            where_parts.append("rb.status = ?")
+            params.append(status)
+        if device_id is not None:
+            where_parts.append("rb.device_id = ?")
+            params.append(device_id)
+        where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        query = f"""
+        SELECT
+          rb.*,
+          md.device_name,
+          md.last_seen_at AS device_last_seen_at,
+          md.revoked_at AS device_revoked_at
+        FROM review_batches rb
+        JOIN mobile_devices md ON md.id = rb.device_id
+        {where}
+        ORDER BY
+          CASE rb.status
+            WHEN 'open' THEN 0
+            WHEN 'completed' THEN 1
+            ELSE 2
+          END,
+          rb.updated_at DESC,
+          rb.id DESC
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_review_batch(self, uid: str, device_id: int | None = None) -> dict[str, Any] | None:
+        params: list[Any] = [uid]
+        where = "WHERE uid = ?"
+        if device_id is not None:
+            where += " AND device_id = ?"
+            params.append(device_id)
+        with self.connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT *
+                FROM review_batches
+                {where}
+                LIMIT 1
+                """,
+                tuple(params),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_review_batch(
+        self,
+        batch_id: int,
+        *,
+        cursor_index: int | None = None,
+        status: str | None = None,
+        updated_at: str | None = None,
+        completed_at: str | None = None,
+    ) -> None:
+        parts: list[str] = []
+        values: list[Any] = []
+        if cursor_index is not None:
+            parts.append("cursor_index = ?")
+            values.append(cursor_index)
+        if status is not None:
+            parts.append("status = ?")
+            values.append(status)
+        if updated_at is not None:
+            parts.append("updated_at = ?")
+            values.append(updated_at)
+        if completed_at is not None:
+            parts.append("completed_at = ?")
+            values.append(completed_at)
+        if not parts:
+            return
+        values.append(batch_id)
+        with self.connect() as conn:
+            conn.execute(f"UPDATE review_batches SET {', '.join(parts)} WHERE id = ?", values)
+
+    def delete_review_batch(self, batch_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM review_batches WHERE id = ?", (batch_id,))
+
+    def review_batch_decision_counts(self, batch_id: int) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT COALESCE(decision, 'pending') AS label, COUNT(*) AS total
+                FROM review_batch_items
+                WHERE batch_id = ?
+                GROUP BY COALESCE(decision, 'pending')
+                """,
+                (batch_id,),
+            ).fetchall()
+        counts = {row["label"]: row["total"] for row in rows}
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def list_review_batch_items(
+        self,
+        batch_id: int,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        query = """
+        SELECT
+          rbi.id,
+          rbi.batch_id,
+          rbi.image_id,
+          rbi.position,
+          rbi.snapshot_path,
+          rbi.snapshot_root_name,
+          rbi.snapshot_file_name,
+          rbi.snapshot_width,
+          rbi.snapshot_height,
+          rbi.snapshot_size_bytes,
+          rbi.decision,
+          rbi.client_updated_at,
+          rbi.decision_updated_at,
+          rbi.applied_action,
+          rbi.applied_at,
+          i.path,
+          i.root_name,
+          i.role,
+          i.file_name,
+          i.width,
+          i.height,
+          i.size_bytes,
+          i.is_deleted
+        FROM review_batch_items rbi
+        LEFT JOIN images i ON i.id = rbi.image_id
+        WHERE rbi.batch_id = ?
+        ORDER BY rbi.position ASC
+        LIMIT ? OFFSET ?
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, (batch_id, limit, offset)).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_review_batch_item(self, batch_id: int, item_id: int) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                  rbi.*,
+                  i.path,
+                  i.root_name,
+                  i.role,
+                  i.file_name,
+                  i.width,
+                  i.height,
+                  i.size_bytes,
+                  i.is_deleted
+                FROM review_batch_items rbi
+                LEFT JOIN images i ON i.id = rbi.image_id
+                WHERE rbi.batch_id = ? AND rbi.id = ?
+                LIMIT 1
+                """,
+                (batch_id, item_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_review_batch_item_decision(
+        self,
+        batch_id: int,
+        item_id: int,
+        decision: str | None,
+        client_updated_at: str | None,
+        decision_updated_at: str,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE review_batch_items
+                SET decision = ?, client_updated_at = ?, decision_updated_at = ?, applied_action = NULL, applied_at = NULL
+                WHERE batch_id = ? AND id = ?
+                """,
+                (decision, client_updated_at, decision_updated_at, batch_id, item_id),
+            )
+
+    def mark_review_batch_items_applied(self, rows: list[tuple[str, str, int]]) -> None:
+        if not rows:
+            return
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                UPDATE review_batch_items
+                SET applied_action = ?, applied_at = ?
+                WHERE id = ?
+                """,
+                rows,
+            )
+
+    def bulk_update_review_batch_item_decisions(
+        self,
+        rows: list[tuple[str | None, str | None, str, int]],
+    ) -> None:
+        if not rows:
+            return
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                UPDATE review_batch_items
+                SET decision = ?, client_updated_at = ?, decision_updated_at = ?, applied_action = NULL, applied_at = NULL
+                WHERE id = ?
+                """,
+                rows,
+            )
+
+    def mobile_stats(self) -> dict[str, int]:
+        with self.connect() as conn:
+            device_total = conn.execute("SELECT COUNT(*) FROM mobile_devices WHERE revoked_at IS NULL").fetchone()[0]
+            open_batches = conn.execute("SELECT COUNT(*) FROM review_batches WHERE status = 'open'").fetchone()[0]
+            completed_batches = conn.execute("SELECT COUNT(*) FROM review_batches WHERE status = 'completed'").fetchone()[0]
+            canceled_batches = conn.execute("SELECT COUNT(*) FROM review_batches WHERE status = 'canceled'").fetchone()[0]
+            active_pairing_codes = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM mobile_pairing_codes
+                WHERE consumed_at IS NULL
+                """
+            ).fetchone()[0]
+        return {
+            "devices": int(device_total),
+            "open_batches": int(open_batches),
+            "completed_batches": int(completed_batches),
+            "canceled_batches": int(canceled_batches),
+            "active_pairing_codes": int(active_pairing_codes),
+        }

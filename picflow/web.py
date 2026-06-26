@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 from http import HTTPStatus
@@ -10,6 +11,33 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .categorization import apply_export_actions, list_category_items, plan_export_actions, run_categorization
 from .config import AppConfig, load_or_create_config, resolve_config_path
 from .db import Database
+from .mobile import (
+    MobileAuthError,
+    MobileValidationError,
+    admin_apply_review_batch,
+    admin_cancel_review_batch,
+    admin_complete_review_batch,
+    admin_get_batch,
+    admin_list_batch_items,
+    admin_list_batches,
+    admin_mobile_overview,
+    admin_plan_review_batch_apply,
+    admin_revoke_device,
+    apply_review_batch,
+    delete_review_batch,
+    authenticate_device,
+    create_review_batch,
+    create_pairing_code,
+    get_review_batch,
+    list_mobile_roots,
+    list_review_batch_items,
+    list_review_batches,
+    mobile_capabilities,
+    pair_device,
+    plan_review_batch_apply,
+    resolve_review_batch_item_path,
+    sync_review_batch,
+)
 from .duplicates import apply_planned_actions, build_duplicate_candidates, plan_duplicate_actions, scan_library, utc_now
 from .jobs import JobManager
 from .selection import apply_selection_actions, list_selection_items, plan_selection_actions
@@ -74,6 +102,9 @@ class PicFlowHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if not self._is_mobile_path(parsed.path) and not self._is_local_request():
+            self._send_error_json(HTTPStatus.FORBIDDEN, "Этот интерфейс доступен только с localhost")
+            return
         if parsed.path == "/":
             self._serve_file(Path(__file__).resolve().parent / "templates" / "dashboard.html", "text/html; charset=utf-8")
             return
@@ -85,6 +116,9 @@ class PicFlowHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/categorize":
             self._serve_file(Path(__file__).resolve().parent / "templates" / "categorize.html", "text/html; charset=utf-8")
+            return
+        if parsed.path == "/mobile-review":
+            self._serve_file(Path(__file__).resolve().parent / "templates" / "mobile_review.html", "text/html; charset=utf-8")
             return
         if parsed.path.startswith("/static/"):
             target = Path(__file__).resolve().parent / parsed.path.lstrip("/")
@@ -133,6 +167,59 @@ class PicFlowHandler(BaseHTTPRequestHandler):
                 }
             )
             return
+        if parsed.path == "/api/mobile-admin/overview":
+            self._send_json(admin_mobile_overview(self.app.db, self.app.config))
+            return
+        if parsed.path == "/api/mobile-admin/batches":
+            query = parse_qs(parsed.query)
+            status = query.get("status", ["all"])[0]
+            device_id_raw = query.get("device_id", [""])[0]
+            status_filter = None if status == "all" else status
+            device_id = int(device_id_raw) if device_id_raw else None
+            self._send_json({"items": admin_list_batches(self.app.db, self.app.config, status=status_filter, device_id=device_id)})
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/") and parsed.path.endswith("/items"):
+            self._admin_batch_items(parsed)
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/"):
+            self._admin_batch_detail(parsed.path)
+            return
+        if parsed.path == "/api/mobile/capabilities":
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._send_json({"device": {"id": device["id"], "device_name": device["device_name"]}, **mobile_capabilities(self.app.config)})
+            return
+        if parsed.path == "/api/mobile/roots":
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._send_json({"roots": list_mobile_roots(self.app.db)})
+            return
+        if parsed.path == "/api/mobile/batches":
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._send_json({"items": list_review_batches(self.app.db, self.app.config, device)})
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and parsed.path.endswith("/items"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_batch_items(parsed, device)
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and "/items/" in parsed.path and parsed.path.endswith("/original"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._serve_mobile_original(parsed.path, device)
+            return
+        if parsed.path.startswith("/api/mobile/batches/"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_batch_detail(parsed.path, device)
+            return
         if parsed.path.startswith("/api/duplicates/"):
             try:
                 candidate_id = int(parsed.path.rsplit("/", 1)[-1])
@@ -149,7 +236,61 @@ class PicFlowHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if not self._is_mobile_path(parsed.path) and not self._is_local_request():
+            self._send_error_json(HTTPStatus.FORBIDDEN, "Этот интерфейс доступен только с localhost")
+            return
         body = self._read_json_body()
+        if parsed.path == "/api/mobile/pair":
+            self._mobile_pair(body)
+            return
+        if parsed.path == "/api/mobile-admin/pairing-code":
+            self._admin_pairing_code(body)
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/") and parsed.path.endswith("/apply-plan"):
+            self._admin_batch_apply_plan(parsed.path)
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/") and parsed.path.endswith("/apply"):
+            self._admin_batch_apply(parsed.path, body)
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/") and parsed.path.endswith("/cancel"):
+            self._admin_batch_cancel(parsed.path)
+            return
+        if parsed.path.startswith("/api/mobile-admin/batches/") and parsed.path.endswith("/complete"):
+            self._admin_batch_complete(parsed.path)
+            return
+        if parsed.path.startswith("/api/mobile-admin/devices/") and parsed.path.endswith("/revoke"):
+            self._admin_device_revoke(parsed.path)
+            return
+        if parsed.path == "/api/mobile/batches":
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_create_batch(device, body)
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and parsed.path.endswith("/sync"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_sync_batch(parsed.path, device, body)
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and parsed.path.endswith("/apply-plan"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_apply_plan(parsed.path, device)
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and parsed.path.endswith("/apply"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_apply_batch(parsed.path, device, body)
+            return
+        if parsed.path.startswith("/api/mobile/batches/") and parsed.path.endswith("/delete"):
+            device = self._require_mobile_device()
+            if not device:
+                return
+            self._mobile_delete_batch(parsed.path, device)
+            return
         if parsed.path == "/api/scan":
             self._start_scan_job(body)
             return
@@ -411,6 +552,316 @@ class PicFlowHandler(BaseHTTPRequestHandler):
             return
         content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
         self._serve_file(resolved, content_type, binary=True)
+
+    def _mobile_pair(self, body: dict) -> None:
+        try:
+            payload = pair_device(
+                self.app.db,
+                str(body.get("code") or ""),
+                str(body.get("device_name") or ""),
+            )
+        except MobileAuthError as exc:
+            self._send_error_json(HTTPStatus.UNAUTHORIZED, str(exc))
+            return
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(
+            {
+                "device": {
+                    "id": payload["device"]["id"],
+                    "device_name": payload["device"]["device_name"],
+                    "created_at": payload["device"]["created_at"],
+                },
+                "access_token": payload["access_token"],
+            },
+            status=HTTPStatus.CREATED,
+        )
+
+    def _admin_pairing_code(self, body: dict) -> None:
+        ttl_minutes = int(body.get("ttl_minutes", 10))
+        payload = create_pairing_code(self.app.db, ttl_minutes=ttl_minutes)
+        self._send_json(payload, status=HTTPStatus.CREATED)
+
+    def _admin_batch_detail(self, path: str) -> None:
+        batch_uid = self._extract_admin_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            self._send_json(admin_get_batch(self.app.db, self.app.config, batch_uid))
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+
+    def _admin_batch_items(self, parsed) -> None:
+        batch_uid = self._extract_admin_batch_uid(parsed.path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        query = parse_qs(parsed.query)
+        limit = int(query.get("limit", ["120"])[0])
+        offset = int(query.get("offset", ["0"])[0])
+        try:
+            payload = admin_list_batch_items(
+                self.app.db,
+                self.app.config,
+                batch_uid,
+                limit=limit,
+                offset=offset,
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+            return
+        self._send_json(payload)
+
+    def _admin_batch_apply_plan(self, path: str) -> None:
+        batch_uid = self._extract_admin_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = admin_plan_review_batch_apply(self.app.db, self.app.config, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _admin_batch_apply(self, path: str, body: dict) -> None:
+        batch_uid = self._extract_admin_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = admin_apply_review_batch(
+                self.app.db,
+                self.app.config,
+                batch_uid,
+                confirm_purge=bool(body.get("confirm_purge")),
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _admin_batch_cancel(self, path: str) -> None:
+        batch_uid = self._extract_admin_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = admin_cancel_review_batch(self.app.db, self.app.config, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _admin_batch_complete(self, path: str) -> None:
+        batch_uid = self._extract_admin_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = admin_complete_review_batch(self.app.db, self.app.config, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _admin_device_revoke(self, path: str) -> None:
+        device_id = self._extract_admin_device_id(path)
+        if device_id is None:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный id устройства")
+            return
+        try:
+            payload = admin_revoke_device(self.app.db, self.app.config, device_id)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_create_batch(self, device: dict, body: dict) -> None:
+        root_names = body.get("root_names")
+        if root_names is not None and not isinstance(root_names, list):
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "root_names должен быть списком")
+            return
+        try:
+            payload = create_review_batch(
+                self.app.db,
+                self.app.config,
+                device,
+                root_names=[str(item) for item in root_names] if root_names else None,
+                batch_size=int(body.get("batch_size", 0)),
+                name=str(body.get("name") or "").strip() or None,
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload, status=HTTPStatus.CREATED)
+
+    def _mobile_batch_detail(self, path: str, device: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = get_review_batch(self.app.db, self.app.config, device, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_batch_items(self, parsed, device: dict) -> None:
+        batch_uid = self._extract_batch_uid(parsed.path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        query = parse_qs(parsed.query)
+        limit = int(query.get("limit", ["120"])[0])
+        offset = int(query.get("offset", ["0"])[0])
+        try:
+            payload = list_review_batch_items(
+                self.app.db,
+                self.app.config,
+                device,
+                batch_uid,
+                limit=limit,
+                offset=offset,
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_sync_batch(self, path: str, device: dict, body: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        updates = body.get("updates")
+        if updates is None or not isinstance(updates, list):
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Нужен список updates")
+            return
+        try:
+            payload = sync_review_batch(
+                self.app.db,
+                self.app.config,
+                device,
+                batch_uid,
+                cursor_index=body.get("cursor_index"),
+                updates=updates,
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_apply_plan(self, path: str, device: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = plan_review_batch_apply(self.app.db, self.app.config, device, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_apply_batch(self, path: str, device: dict, body: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = apply_review_batch(
+                self.app.db,
+                self.app.config,
+                device,
+                batch_uid,
+                confirm_purge=bool(body.get("confirm_purge")),
+            )
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _mobile_delete_batch(self, path: str, device: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        if not batch_uid:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный uid батча")
+            return
+        try:
+            payload = delete_review_batch(self.app.db, self.app.config, device, batch_uid)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(payload)
+
+    def _serve_mobile_original(self, path: str, device: dict) -> None:
+        batch_uid = self._extract_batch_uid(path)
+        item_id = self._extract_batch_item_id(path)
+        if not batch_uid or item_id is None:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Некорректный путь mobile original")
+            return
+        try:
+            resolved = resolve_review_batch_item_path(self.app.db, device, batch_uid, item_id)
+        except MobileValidationError as exc:
+            self._send_error_json(HTTPStatus.NOT_FOUND, str(exc))
+            return
+        content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+        self._serve_file(resolved, content_type, binary=True)
+
+    def _require_mobile_device(self) -> dict | None:
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            self._send_error_json(HTTPStatus.UNAUTHORIZED, "Нужен Bearer token")
+            return None
+        access_token = auth_header.split(" ", 1)[1]
+        try:
+            return authenticate_device(self.app.db, access_token)
+        except MobileAuthError as exc:
+            self._send_error_json(HTTPStatus.UNAUTHORIZED, str(exc))
+            return None
+
+    def _is_mobile_path(self, path: str) -> bool:
+        return path.startswith("/api/mobile/")
+
+    def _is_local_request(self) -> bool:
+        remote = self.client_address[0]
+        try:
+            return ipaddress.ip_address(remote).is_loopback
+        except ValueError:
+            return False
+
+    def _extract_batch_uid(self, path: str) -> str | None:
+        parts = path.strip("/").split("/")
+        if len(parts) < 4:
+            return None
+        return parts[3]
+
+    def _extract_batch_item_id(self, path: str) -> int | None:
+        parts = path.strip("/").split("/")
+        try:
+            item_index = parts.index("items")
+        except ValueError:
+            return None
+        try:
+            return int(parts[item_index + 1])
+        except (IndexError, ValueError):
+            return None
+
+    def _extract_admin_batch_uid(self, path: str) -> str | None:
+        parts = path.strip("/").split("/")
+        if len(parts) < 4:
+            return None
+        return parts[3]
+
+    def _extract_admin_device_id(self, path: str) -> int | None:
+        parts = path.strip("/").split("/")
+        try:
+            return int(parts[3])
+        except (IndexError, ValueError):
+            return None
 
     def _serve_file(self, path: Path, content_type: str, *, binary: bool = False) -> None:
         data = path.read_bytes() if binary else path.read_text(encoding="utf-8").encode("utf-8")

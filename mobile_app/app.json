@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "PicFlow Mobile",
+    "slug": "picflow-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": true,
+      "package": "local.picflow.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#f4ede3"
+      }
+    }
+  }
+}

@@ -845,3 +845,109 @@ kbd {
   background: #fee2e2;
   color: #991b1b;
 }
+
+.status-chip--good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.status-chip--bad,
+.status-chip--purge {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.summary-grid > div small {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.mobile-admin-shell {
+  gap: 18px;
+}
+
+.mobile-admin-grid,
+.mobile-admin-layout,
+.mobile-batch-workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.mobile-admin-grid {
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+}
+
+.mobile-admin-layout {
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+}
+
+.mobile-batch-workspace {
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.mobile-admin-sidebar,
+.mobile-admin-main,
+.mobile-subpanel,
+.mobile-preview-panel,
+.mobile-pairing-card,
+.mobile-pairing-box {
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-admin-sidebar,
+.mobile-admin-main,
+.mobile-subpanel {
+  align-content: start;
+}
+
+.mobile-device-card.is-live {
+  border-color: rgba(45, 124, 88, 0.24);
+}
+
+.mobile-pairing-box {
+  min-height: 140px;
+}
+
+.mobile-pairing-card {
+  min-height: 140px;
+  place-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at top right, rgba(29, 111, 120, 0.16), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 240, 231, 0.92));
+  padding: 18px;
+}
+
+.mobile-pairing-card__code {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  color: var(--accent-strong);
+}
+
+.mobile-batch-detail {
+  display: grid;
+  gap: 18px;
+}
+
+.mobile-preview-panel {
+  min-height: 240px;
+}
+
+.mobile-preview-image {
+  min-height: 320px;
+}
+
+@media (max-width: 1280px) {
+  .mobile-admin-grid,
+  .mobile-admin-layout,
+  .mobile-batch-workspace {
+    grid-template-columns: 1fr;
+  }
+}

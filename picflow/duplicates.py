@@ -376,7 +376,7 @@ def apply_planned_actions(
         if progress:
             progress(index / total, f"Применение изменений {index}/{len(actions)}")
         old_path = Path(action.old_path)
-        if action.kind == "delete":
+        if action.kind in {"delete", "purge"}:
             if old_path.exists():
                 old_path.unlink()
             deleted += 1
